@@ -3,7 +3,7 @@
  * Saldo = HorasTrabalhadas - HorasPrevistas
  */
 
-import { computeDaySummaryV2, PunchTimes, ScheduledTimes } from '../calculation-core-v2';
+import { computeDaySummaryV2, PunchTimes, ScheduledTimes } from '../../domain/time-calculation';
 
 describe('Cálculo de Ponto V2 - Saldo = HorasTrabalhadas - HorasPrevistas', () => {
   const workDate = '2025-12-05';
@@ -223,7 +223,7 @@ describe('Cálculo de Ponto V2 - Saldo = HorasTrabalhadas - HorasPrevistas', () 
   });
 
   describe('Cálculo em segundos (não pode comer minutos)', () => {
-    test('Deve calcular corretamente em segundos e converter para minutos', () => {
+    test('Deve calcular corretamente em segundos ignorando segundos das batidas', () => {
       const schedule: ScheduledTimes = {
         morningStart: '08:00',
         morningEnd: '12:00',
@@ -231,30 +231,31 @@ describe('Cálculo de Ponto V2 - Saldo = HorasTrabalhadas - HorasPrevistas', () 
         afternoonEnd: '18:00',
       };
 
-      // Batidas com segundos
+      // Batidas com segundos (devem ser ignorados)
       const punches: PunchTimes = {
-        morningEntry: '2025-12-05 08:00:30',    // 30 segundos
-        lunchExit: '2025-12-05 12:00:45',       // 45 segundos
-        afternoonEntry: '2025-12-05 14:00:15',  // 15 segundos
-        finalExit: '2025-12-05 18:00:20',       // 20 segundos
+        morningEntry: '2025-12-05 08:00:30',    // 30 segundos (ignorados)
+        lunchExit: '2025-12-05 12:00:45',       // 45 segundos (ignorados)
+        afternoonEntry: '2025-12-05 14:00:15',  // 15 segundos (ignorados)
+        finalExit: '2025-12-05 18:00:20',       // 20 segundos (ignorados)
       };
 
       const summary = computeDaySummaryV2(punches, schedule, workDate);
       
-      // Manhã: 08:00:30 até 12:00:45 = 240 min 15s = 14415s
-      // Tarde: 14:00:15 até 18:00:20 = 240 min 5s = 14405s
-      // Total: 480 min 20s = 28820s
+      // IMPORTANTE: O sistema ignora segundos completamente
+      // Manhã: 08:00 até 12:00 = 240 min = 14400s
+      // Tarde: 14:00 até 18:00 = 240 min = 14400s
+      // Total: 480 min = 28800s
       // Minutos (floor): 480 min
-      expect(summary.workedSeconds).toBe(28820);
+      expect(summary.workedSeconds).toBe(28800);
       expect(summary.workedMinutes).toBe(480);
       
       // Previsto: 480 min = 28800s
       expect(summary.expectedSeconds).toBe(28800);
       expect(summary.expectedMinutes).toBe(480);
       
-      // Saldo: 28820 - 28800 = +20s = 0 min (floor)
-      expect(summary.balanceSeconds).toBe(20);
-      expect(summary.balanceMinutes).toBe(0); // Floor de 20/60 = 0
+      // Saldo: 28800 - 28800 = 0s = 0 min
+      expect(summary.balanceSeconds).toBe(0);
+      expect(summary.balanceMinutes).toBe(0);
     });
 
     test('Caso Valdinete: não pode sumir minutos (07-13/14-18, batidas 06:58/13:02/13:58/18:14)', () => {

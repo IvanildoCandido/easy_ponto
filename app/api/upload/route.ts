@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseFileContent, processTimeRecords } from '@/lib/processFile';
-import { calculateDailyRecords } from '@/lib/calculate';
+import { parseFileContent, processTimeRecords } from '@/infrastructure/file-processor';
+import { calculateDailyRecords } from '@/application/daily-calculation-service';
 import { Buffer } from 'buffer';
 
 export async function POST(request: NextRequest) {

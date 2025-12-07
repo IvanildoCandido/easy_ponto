@@ -1,0 +1,112 @@
+# Regras do Cursor para Easy Ponto
+
+## Idioma
+- Sempre use português brasileiro (pt-BR) para:
+  - Mensagens de commit
+  - Comentários no código
+  - Documentação
+  - Comunicação com o usuário
+
+## Mensagens de Commit - Conventional Commits
+
+SEMPRE use o padrão **Conventional Commits** em português brasileiro.
+
+### Formato
+```
+<tipo>(<escopo>): <descrição>
+
+[corpo opcional]
+
+[rodapé opcional]
+```
+
+### Tipos Permitidos
+- `feat`: Nova funcionalidade
+- `fix`: Correção de bug
+- `docs`: Mudanças na documentação
+- `style`: Formatação, ponto e vírgula faltando, etc (não afeta código)
+- `refactor`: Refatoração de código
+- `test`: Adicionar ou corrigir testes
+- `chore`: Mudanças em build, dependências, ferramentas
+- `perf`: Melhorias de performance
+- `ci`: Mudanças em CI/CD
+
+### Escopo (opcional)
+- `clt`: Relacionado a cálculos CLT
+- `calculo`: Relacionado a cálculos de ponto
+- `api`: Mudanças em rotas/endpoints
+- `ui`: Mudanças na interface
+- `db`: Mudanças no banco de dados
+- `test`: Relacionado a testes
+- `config`: Configurações do projeto
+
+### Exemplos de Mensagens
+
+**Feat:**
+```
+feat(calculo): adicionar cálculo de excesso de intervalo
+feat(clt): implementar tolerância de 5/10 minutos
+feat(api): criar endpoint para recálculo de ponto
+```
+
+**Fix:**
+```
+fix(calculo): corrigir bug no cálculo de horas trabalhadas
+fix(clt): corrigir aplicação de tolerância diária
+fix(ui): corrigir exibição de saldo negativo
+```
+
+**Refactor:**
+```
+refactor(calculo): extrair lógica de cálculo para módulo de domínio
+refactor(api): reorganizar rotas por funcionalidade
+refactor: aplicar arquitetura em camadas
+```
+
+**Test:**
+```
+test(calculo): adicionar testes para casos reais CLT
+test: aumentar cobertura para 90% no domínio
+test(clt): adicionar testes de fronteira para tolerância
+```
+
+**Docs:**
+```
+docs: atualizar documentação de arquitetura
+docs(clt): documentar regras de tolerância CLT
+docs: adicionar guia de testes
+```
+
+**Chore:**
+```
+chore: atualizar dependências
+chore(config): configurar Husky para pre-commit
+chore: remover arquivos obsoletos
+```
+
+### Regras Importantes
+1. **Sempre** comece com o tipo em minúsculas
+2. **Sempre** use dois pontos após o escopo (se houver)
+3. **Sempre** use descrição em português, verbo no infinitivo
+4. **Sempre** use primeira letra minúscula na descrição
+5. **Nunca** termine a descrição com ponto final
+6. Use escopo quando a mudança for específica de um módulo
+7. Seja conciso mas descritivo na descrição
+
+### Exemplos de Boas Práticas
+✅ `feat(calculo): adicionar suporte a jornada parcial`
+✅ `fix(clt): corrigir cálculo de saldo CLT quando tolerância excede`
+✅ `refactor: extrair utilitários de tempo para módulo separado`
+✅ `test(calculo): adicionar testes para casos reais do sistema`
+✅ `docs: atualizar README com instruções de instalação`
+
+❌ `Adicionar nova funcionalidade` (sem tipo)
+❌ `fix: bug corrigido` (descrição muito genérica)
+❌ `FEAT: Adicionar cálculo.` (maiúsculas e ponto final)
+❌ `fix(clt): Corrigir bug no cálculo CLT.` (maiúscula e ponto)
+
+## Estilo de Código
+- Comentários em português
+- Nomes de variáveis e funções em inglês (padrão de código)
+- Documentação em português
+

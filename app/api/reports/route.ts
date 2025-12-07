@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { query } from '@/infrastructure/database';
 import { format } from 'date-fns';
 
 export async function GET(request: NextRequest) {

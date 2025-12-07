@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
-import { calculateDailyRecords } from '@/lib/calculate';
+import { query } from '@/infrastructure/database';
+import { calculateDailyRecords } from '@/application/daily-calculation-service';
 
 /**
  * Endpoint para recalcular todos os registros processados

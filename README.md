@@ -1,25 +1,28 @@
 # Easy Ponto - Sistema de Controle de Ponto
 
-Sistema web para processamento e controle de folha de ponto, com cálculo automático de atrasos, chegadas antecipadas e horas extras.
+Sistema web para processamento e controle de folha de ponto, com cálculo automático de horas trabalhadas, saldos e indicadores CLT.
 
 ## Funcionalidades
 
 - ✅ Upload e processamento de arquivos de ponto (formato TXT com valores separados por tabulação)
 - ✅ Configuração de horários de trabalho por funcionário e dia da semana
 - ✅ Cálculo automático de:
-  - Atrasos
-  - Chegadas antecipadas
-  - Horas extras
-  - Horas trabalhadas
+  - Horas trabalhadas vs horas previstas
+  - Saldo gerencial (trabalhadas - previstas)
+  - Indicadores informativos (atraso, chegada antecipada, hora extra, saída antecipada)
+  - Excesso de intervalo
+  - Valores CLT (art. 58 §1º + Súmula 366 TST)
 - ✅ Relatórios detalhados com filtros por funcionário e período
+- ✅ Geração de PDF de folha de ponto
 
 ## Tecnologias
 
 - **Next.js 14** (App Router)
 - **TypeScript**
-- **SQLite** (better-sqlite3)
+- **SQLite** (desenvolvimento) / **Postgres/Supabase** (produção)
 - **Tailwind CSS**
 - **date-fns**
+- **jsPDF**
 
 ## Instalação
 
@@ -50,42 +53,29 @@ No	TMNo	EnNo	Name	GMNo	Mode	In/Out	VM	Department	DateTime
 2	1	1	Marizelma de Souza	1	1	1	Dedo	PET SHOP	2025-12-03 19:38:37
 ```
 
-## Estrutura do Banco de Dados
+## Estrutura do Projeto
 
-- **employees**: Funcionários cadastrados
-- **work_schedules**: Horários de trabalho por funcionário e dia da semana
-- **time_records**: Registros brutos de batidas de ponto
-- **processed_records**: Registros processados com cálculos de atrasos, horas extras, etc.
-
-## Deploy na Vercel
-
-⚠️ **IMPORTANTE**: SQLite (`better-sqlite3`) não é compatível com ambientes serverless como a Vercel, pois requer compilação nativa e sistema de arquivos persistente.
-
-### Opções para Deploy na Vercel:
-
-1. **Turso (Recomendado)** - SQLite distribuído e compatível com serverless:
-   ```bash
-   npm install @libsql/client
-   ```
-   Substitua `better-sqlite3` por `@libsql/client` no código.
-
-2. **Vercel Postgres** - PostgreSQL gerenciado pela Vercel:
-   - Crie um banco Postgres no dashboard da Vercel
-   - Use `@vercel/postgres` ou `pg` como cliente
-   - Adapte o schema SQL para PostgreSQL
-
-3. **Supabase** - PostgreSQL com API REST:
-   - Crie um projeto no Supabase
-   - Use `@supabase/supabase-js` como cliente
-   - Adapte o schema SQL para PostgreSQL
-
-4. **PlanetScale** - MySQL serverless:
-   - Crie um banco no PlanetScale
-   - Use `@planetscale/database` como cliente
-   - Adapte o schema SQL para MySQL
-
-### Para desenvolvimento local:
-O sistema funciona perfeitamente com SQLite local. Use `npm run dev` para testar localmente antes de fazer o deploy.
+```
+easy_ponto/
+├── app/                    # Next.js App Router
+│   ├── api/                # Rotas da API
+│   ├── globals.css         # Estilos globais
+│   ├── layout.tsx          # Layout principal
+│   └── page.tsx            # Página inicial
+├── components/             # Componentes React
+├── domain/                 # Lógica de domínio (pura)
+│   ├── time-utils.ts       # Utilitários de tempo
+│   ├── clt-tolerance.ts    # Lógica CLT
+│   └── time-calculation.ts # Cálculo de ponto
+├── application/            # Casos de uso
+│   └── daily-calculation-service.ts
+├── infrastructure/         # Infraestrutura
+│   ├── database.ts         # Acesso ao banco
+│   └── file-processor.ts   # Processamento de arquivos
+├── lib/                    # Compatibilidade (deprecated)
+├── database/               # Arquivo SQLite (gerado automaticamente)
+└── docs/                   # Documentação
+```
 
 ## Scripts Disponíveis
 
@@ -93,26 +83,66 @@ O sistema funciona perfeitamente com SQLite local. Use `npm run dev` para testar
 - `npm run build` - Cria a build de produção
 - `npm start` - Inicia o servidor de produção
 - `npm run lint` - Executa o linter
+- `npm test` - Executa os testes unitários
+- `npm run test:watch` - Executa os testes em modo watch
+- `npm run test:coverage` - Executa os testes com relatório de cobertura
+- `npm run test:ci` - Executa os testes em modo CI (com cobertura)
 
-## Estrutura do Projeto
+## Deploy
 
+O sistema suporta SQLite para desenvolvimento local e Postgres/Supabase para produção.
+
+### Configuração de Produção
+
+Configure a variável de ambiente `SUPABASE_DB_URL` para usar Postgres em produção:
+
+```env
+SUPABASE_DB_URL=postgresql://user:password@host:port/database
 ```
-easy_ponto/
-├── app/
-│   ├── api/          # Rotas da API
-│   ├── globals.css   # Estilos globais
-│   ├── layout.tsx    # Layout principal
-│   └── page.tsx      # Página inicial
-├── components/       # Componentes React
-├── lib/              # Utilitários e lógica de negócio
-│   ├── db.ts         # Configuração do banco de dados
-│   ├── types.ts      # Tipos TypeScript
-│   ├── processFile.ts # Processamento de arquivos
-│   └── calculate.ts  # Cálculos de ponto
-└── database/         # Arquivo SQLite (gerado automaticamente)
+
+## Testes
+
+O projeto possui uma suíte completa de testes automatizados com alta cobertura (meta: 80-90% na camada de domínio).
+
+### Executando Testes
+
+```bash
+# Executar todos os testes (resumo)
+npm test
+
+# Executar com detalhes de cada teste (verbose)
+npm run test:verbose
+
+# Executar em modo watch (desenvolvimento)
+npm run test:watch
+
+# Executar com relatório de cobertura
+npm run test:coverage
+
+# Executar com cobertura e detalhes
+npm run test:coverage:verbose
 ```
+
+### Testes Automatizados com Git Hooks
+
+O projeto utiliza **Husky** para executar testes automaticamente antes de commits e pushes:
+
+- **pre-commit**: Executa `npm test` antes de cada commit
+  - Se os testes falharem, o commit é bloqueado
+- **pre-push**: Executa `npm run test:coverage` antes de cada push
+  - Garante que a cobertura está adequada antes de enviar código
+
+**Comportamento**: Ao tentar commitar ou fazer push, os testes rodam automaticamente. Se falharem, a operação é cancelada para evitar quebrar funcionalidades que já estão funcionando.
+
+Consulte `docs/TESTES.md` para documentação completa sobre testes.
+
+## Documentação
+
+Consulte a pasta `docs/` para documentação detalhada:
+- `docs/ARQUITETURA.md` - Arquitetura do sistema
+- `docs/TOLERANCIA_CLT.md` - Regras de tolerância CLT
+- `docs/CHANGELOG.md` - Histórico de mudanças
 
 ## Licença
 
 MIT
-
