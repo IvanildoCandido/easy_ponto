@@ -174,18 +174,21 @@ export default function ScheduleConfig() {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold mb-4">Configuração de Horários de Trabalho</h2>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-neutral-900 mb-2">Configuração de Horários de Trabalho</h2>
+        <p className="text-neutral-600">Configure os horários de trabalho para cada funcionário</p>
+      </div>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-semibold text-neutral-700 mb-2">
             Selecione o funcionário
           </label>
           <select
             value={selectedEmployee}
             onChange={(e) => setSelectedEmployee(e.target.value ? parseInt(e.target.value) : '')}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="input"
           >
             <option value="">-- Selecione um funcionário --</option>
             {employees.map(emp => (
@@ -210,19 +213,19 @@ export default function ScheduleConfig() {
                   return (
                     <div
                       key={day.value}
-                      className="border border-gray-200 rounded-md p-4"
+                      className="card-hover p-5"
                     >
-                      <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-3">
-                          <div className="font-medium text-gray-700">{day.label}</div>
+                          <div className="font-semibold text-neutral-800">{day.label}</div>
                           {dayHours > 0 && (
-                            <div className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                            <div className="badge-success">
                               {formatHours(dayHours)}
                             </div>
                           )}
                         </div>
-                        <div className="flex gap-2 text-xs">
-                          <label className="flex items-center gap-1">
+                        <div className="flex gap-3 text-xs">
+                          <label className="flex items-center gap-2 cursor-pointer">
                             <input
                               type="checkbox"
                               checked={hasMorning}
@@ -235,11 +238,11 @@ export default function ScheduleConfig() {
                                   handleScheduleChange(day.value, 'morning_end', null);
                                 }
                               }}
-                              className="rounded"
+                              className="rounded w-4 h-4 text-primary-600 focus:ring-primary-500 border-neutral-300"
                             />
-                            <span className="text-gray-600">Trabalha Manhã</span>
+                            <span className="text-neutral-700 font-medium">Trabalha Manhã</span>
                           </label>
-                          <label className="flex items-center gap-1">
+                          <label className="flex items-center gap-2 cursor-pointer">
                             <input
                               type="checkbox"
                               checked={hasAfternoon}
@@ -254,13 +257,13 @@ export default function ScheduleConfig() {
                               }}
                               className="rounded"
                             />
-                            <span className="text-gray-600">Trabalha Tarde</span>
+                            <span className="text-neutral-700 font-medium">Trabalha Tarde</span>
                           </label>
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div>
-                          <label className="block text-xs text-gray-600 mb-1">Entrada Manhã</label>
+                          <label className="block text-xs font-semibold text-neutral-700 mb-2">Entrada Manhã</label>
                           <input
                             type="time"
                             value={schedule?.morning_start || ''}
@@ -268,12 +271,12 @@ export default function ScheduleConfig() {
                               handleScheduleChange(day.value, 'morning_start', e.target.value || null)
                             }
                             disabled={!hasMorning}
-                            className="w-full border border-gray-300 rounded-md px-2 py-1 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            className="input text-sm py-2 disabled:bg-neutral-100 disabled:cursor-not-allowed"
                             placeholder="--:--"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-600 mb-1">Saída Manhã (Almoço)</label>
+                          <label className="block text-xs font-semibold text-neutral-700 mb-2">Saída Manhã (Almoço)</label>
                           <input
                             type="time"
                             value={schedule?.morning_end || ''}
@@ -281,12 +284,12 @@ export default function ScheduleConfig() {
                               handleScheduleChange(day.value, 'morning_end', e.target.value || null)
                             }
                             disabled={!hasMorning}
-                            className="w-full border border-gray-300 rounded-md px-2 py-1 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            className="input text-sm py-2 disabled:bg-neutral-100 disabled:cursor-not-allowed"
                             placeholder="--:--"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-600 mb-1">Entrada Tarde</label>
+                          <label className="block text-xs font-semibold text-neutral-700 mb-2">Entrada Tarde</label>
                           <input
                             type="time"
                             value={schedule?.afternoon_start || ''}
@@ -294,12 +297,12 @@ export default function ScheduleConfig() {
                               handleScheduleChange(day.value, 'afternoon_start', e.target.value || null)
                             }
                             disabled={!hasAfternoon}
-                            className="w-full border border-gray-300 rounded-md px-2 py-1 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            className="input text-sm py-2 disabled:bg-neutral-100 disabled:cursor-not-allowed"
                             placeholder="--:--"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-600 mb-1">Saída Tarde</label>
+                          <label className="block text-xs font-semibold text-neutral-700 mb-2">Saída Tarde</label>
                           <input
                             type="time"
                             value={schedule?.afternoon_end || ''}
@@ -307,7 +310,7 @@ export default function ScheduleConfig() {
                               handleScheduleChange(day.value, 'afternoon_end', e.target.value || null)
                             }
                             disabled={!hasAfternoon}
-                            className="w-full border border-gray-300 rounded-md px-2 py-1 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            className="input text-sm py-2 disabled:bg-neutral-100 disabled:cursor-not-allowed"
                             placeholder="--:--"
                           />
                         </div>
@@ -318,16 +321,16 @@ export default function ScheduleConfig() {
               </div>
               
               {/* Resumo semanal */}
-              <div className="mt-6 p-4 bg-gray-50 rounded-md border border-gray-200">
+              <div className="mt-6 p-6 bg-gradient-to-br from-primary-50 to-accent-50/30 rounded-2xl border-2 border-primary-200">
                 <div className="flex items-center justify-between">
-                  <div className="font-semibold text-gray-700">Total Semanal:</div>
-                  <div className="text-xl font-bold text-blue-600">
+                  <div className="font-semibold text-neutral-800">Total Semanal:</div>
+                  <div className="text-2xl font-bold text-gradient">
                     {formatHours(
                       schedules.reduce((total, schedule) => total + calculateDayHours(schedule), 0)
                     )}
                   </div>
                 </div>
-                <div className="mt-2 text-sm text-gray-600">
+                <div className="mt-3 text-sm text-neutral-600 font-medium">
                   {schedules.reduce((total, schedule) => total + calculateDayHours(schedule), 0)} minutos / semana
                 </div>
               </div>
@@ -336,8 +339,7 @@ export default function ScheduleConfig() {
             <button
               onClick={handleSave}
               disabled={loading}
-              className="mt-6 w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700
-                disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
+              className="mt-6 w-full btn-primary disabled:bg-neutral-400 disabled:cursor-not-allowed disabled:hover:bg-neutral-400"
             >
               {loading ? 'Salvando...' : 'Salvar Horários'}
             </button>

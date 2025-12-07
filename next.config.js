@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  images: {
+    domains: [],
+    unoptimized: false,
+  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       // SQLite precisa ser compilado nativamente

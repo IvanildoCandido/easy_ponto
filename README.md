@@ -2,6 +2,13 @@
 
 Sistema web para processamento e controle de folha de ponto, com cálculo automático de horas trabalhadas, saldos e indicadores CLT.
 
+## Desenvolvedor
+
+**Ivanildo Cândido Bezerra**  
+Analista de Sistemas & Engenheiro da Computação
+
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Ivanildo%20Cândido-blue?style=flat&logo=linkedin)](https://www.linkedin.com/in/ivanildocandido/)
+
 ## Funcionalidades
 
 - ✅ Upload e processamento de arquivos de ponto (formato TXT com valores separados por tabulação)

@@ -2,8 +2,84 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-gray-50 text-gray-900;
+@layer base {
+  body {
+    @apply bg-neutral-50 text-neutral-900 antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold;
+  }
+}
+
+@layer components {
+  /* Botões */
+  .btn-primary {
+    @apply bg-primary-500 hover:bg-primary-600 text-white font-medium py-2.5 px-6 rounded-xl transition-all duration-200 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+
+  .btn-secondary {
+    @apply bg-white hover:bg-neutral-50 text-primary-600 font-medium py-2.5 px-6 rounded-xl border-2 border-primary-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+
+  .btn-accent {
+    @apply bg-accent-500 hover:bg-accent-600 text-white font-medium py-2.5 px-6 rounded-xl transition-all duration-200 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2;
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-white rounded-2xl shadow-soft p-6 border border-neutral-100;
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200 hover:shadow-card hover:border-primary-200;
+  }
+
+  /* Inputs */
+  .input {
+    @apply w-full px-4 py-3 border-2 border-neutral-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-white;
+  }
+
+  .input-error {
+    @apply input border-accent-500 focus:ring-accent-500;
+  }
+
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-sm font-medium;
+  }
+
+  .badge-success {
+    @apply badge bg-primary-100 text-primary-800;
+  }
+
+  .badge-warning {
+    @apply badge bg-accent-100 text-accent-800;
+  }
+
+  .badge-info {
+    @apply badge bg-neutral-100 text-neutral-800;
+  }
+
+  /* Tabs */
+  .tab {
+    @apply py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200;
+  }
+
+  .tab-active {
+    @apply tab border-primary-500 text-primary-600;
+  }
+
+  .tab-inactive {
+    @apply tab border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary-600 to-accent-600 bg-clip-text text-transparent;
+  }
 }
 
 
