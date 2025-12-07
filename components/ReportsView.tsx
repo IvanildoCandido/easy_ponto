@@ -119,7 +119,10 @@ export default function ReportsView() {
   };
 
   const formatDate = (date: string) => {
-    return new Date(date + 'T00:00:00').toLocaleDateString('pt-BR');
+    const dateObj = new Date(date + 'T00:00:00');
+    const formattedDate = dateObj.toLocaleDateString('pt-BR');
+    const dayOfWeek = dateObj.toLocaleDateString('pt-BR', { weekday: 'short' }).toUpperCase();
+    return `${formattedDate} - ${dayOfWeek}`;
   };
 
   const formatMinutes = (minutes: number, showZero: boolean = false) => {
