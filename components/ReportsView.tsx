@@ -119,10 +119,7 @@ export default function ReportsView() {
   };
 
   const formatDate = (date: string) => {
-    const dateObj = new Date(date + 'T00:00:00');
-    const formattedDate = dateObj.toLocaleDateString('pt-BR');
-    const dayOfWeek = dateObj.toLocaleDateString('pt-BR', { weekday: 'short' }).toUpperCase();
-    return `${formattedDate} - ${dayOfWeek}`;
+    return new Date(date + 'T00:00:00').toLocaleDateString('pt-BR');
   };
 
   const formatMinutes = (minutes: number, showZero: boolean = false) => {
@@ -494,18 +491,15 @@ export default function ReportsView() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-neutral-900 mb-2">Relatórios de Ponto</h2>
-          <p className="text-neutral-600">Visualize e exporte relatórios detalhados de ponto</p>
-        </div>
+    <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-semibold">Relatórios de Ponto</h2>
         <button
           onClick={() => setShowInternalMode(!showInternalMode)}
-          className={`px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 ${
+          className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
             showInternalMode
-              ? 'bg-neutral-600 text-white hover:bg-neutral-700 shadow-sm'
-              : 'btn-primary'
+              ? 'bg-gray-600 text-white hover:bg-gray-700'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
           }`}
           title={showInternalMode ? 'Mostrar dados CLT (legal)' : 'Mostrar dados de controle interno'}
         >
@@ -514,36 +508,32 @@ export default function ReportsView() {
       </div>
       
       {showInternalMode && (
-        <div className="p-4 bg-accent-50 border-2 border-accent-200 rounded-xl">
-          <p className="text-sm text-accent-800 flex items-start space-x-2">
-            <svg className="w-5 h-5 text-accent-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span><strong>Modo Controle Interno:</strong> Exibindo dados gerenciais (horas trabalhadas vs previstas). Para dados legais CLT, clique em &quot;📊 Modo CLT&quot;.</span>
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+          <p className="text-sm text-yellow-800">
+            <strong>Modo Controle Interno:</strong> Exibindo dados gerenciais (horas trabalhadas vs previstas).
+            Para dados legais CLT, clique em &quot;📊 Modo CLT&quot;.
           </p>
         </div>
       )}
       
       {!showInternalMode && (
-        <div className="p-4 bg-primary-50 border-2 border-primary-200 rounded-xl">
-          <p className="text-sm text-primary-800 flex items-start space-x-2">
-            <svg className="w-5 h-5 text-primary-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-            <span><strong>Modo CLT (Legal):</strong> Exibindo dados conforme art. 58 §1º CLT + Súmula 366 TST. Para dados de controle interno, clique em &quot;⚙️ Controle Interno&quot;.</span>
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <p className="text-sm text-blue-800">
+            <strong>Modo CLT (Legal):</strong> Exibindo dados conforme art. 58 §1º CLT + Súmula 366 TST.
+            Para dados de controle interno, clique em &quot;⚙️ Controle Interno&quot;.
           </p>
         </div>
       )}
 
-      <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-3">
         <div>
-          <label className="block text-sm font-semibold text-neutral-700 mb-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
             Funcionário
           </label>
           <select
             value={selectedEmployee}
             onChange={(e) => setSelectedEmployee(e.target.value ? parseInt(e.target.value) : '')}
-            className="input"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Todos</option>
             {employees.map(emp => (
@@ -555,26 +545,26 @@ export default function ReportsView() {
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-neutral-700 mb-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
             Data Inicial
           </label>
           <input
             type="date"
             value={startDate}
             onChange={(e) => handleStartDateChange(e.target.value)}
-            className="input"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-neutral-700 mb-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
             Data Final
           </label>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="input"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
@@ -582,7 +572,8 @@ export default function ReportsView() {
           <button
             onClick={generatePDF}
             disabled={loading || reports.length === 0 || !selectedEmployee}
-            className="flex-1 btn-primary disabled:bg-neutral-400 disabled:cursor-not-allowed disabled:hover:bg-neutral-400"
+            className="flex-1 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700
+              disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
             title={
               reports.length === 0
                 ? 'Nenhum relatório disponível'
@@ -596,7 +587,8 @@ export default function ReportsView() {
           <button
             onClick={generateAllPDFs}
             disabled={loading || employees.length === 0}
-            className="flex-1 btn-accent disabled:bg-neutral-400 disabled:cursor-not-allowed disabled:hover:bg-neutral-400"
+            className="flex-1 bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700
+              disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
             title="Gerar PDF com todos os funcionários (um documento único com uma folha por funcionário)"
           >
             Gerar PDF Todos
@@ -605,83 +597,74 @@ export default function ReportsView() {
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-neutral-500 flex items-center justify-center space-x-2">
-          <svg className="animate-spin h-5 w-5 text-primary-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <span>Carregando...</span>
-        </div>
+        <div className="text-center py-8 text-gray-500">Carregando...</div>
       ) : reports.length === 0 ? (
-        <div className="text-center py-12 text-neutral-500">
-          <svg className="mx-auto h-12 w-12 text-neutral-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <p>Nenhum registro encontrado para o período selecionado.</p>
+        <div className="text-center py-8 text-gray-500">
+          Nenhum registro encontrado para o período selecionado.
         </div>
       ) : (
-        <div className="overflow-x-auto -mx-3 sm:mx-0 rounded-xl border border-neutral-200">
-          <table className="w-full divide-y divide-neutral-200 table-auto text-xs sm:text-sm bg-white">
-            <thead className="bg-gradient-to-r from-primary-500 to-primary-600">
+        <div className="overflow-x-auto -mx-3 sm:mx-0">
+          <table className="w-full divide-y divide-gray-200 table-auto text-xs sm:text-sm">
+            <thead className="bg-gray-50">
               <tr>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Data
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider min-w-[120px]">
+                <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">
                   Funcionário
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                   E. Manhã
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                   S. Alm.
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                   E. Tarde
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                   S. Tarde
                 </th>
                 {showInternalMode ? (
                   <>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       H. Trab.
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       H. Prev.
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                    <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Saldo (Gestão)
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                    <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Atraso
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       Cheg. Ant.
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       H. Extra
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       Exc. Int.
                     </th>
                   </>
                 ) : (
                   <>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-blue-50">
                       ATRASO_CLT
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap bg-blue-50">
                       H.EXTRA_CLT
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                    <th className="px-1 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-blue-50">
                       SALDO_CLT
                     </th>
                   </>
                 )}
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-neutral-200">
+            <tbody className="bg-white divide-y divide-gray-200">
               {reports.map((report) => {
                 // Saldo = Horas Trabalhadas - Horas Previstas
                 // Usar os mesmos valores de worked_minutes e expected_minutes
@@ -690,47 +673,47 @@ export default function ReportsView() {
                 const balance = workedMinutes - expectedMinutes;
                 const isInconsistent = (report.status || 'OK') === 'INCONSISTENTE';
                 return (
-                  <tr key={report.id} className={`hover:bg-primary-50/30 transition-colors ${isInconsistent ? 'bg-accent-50' : ''}`}>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
+                  <tr key={report.id} className={`hover:bg-gray-50 ${isInconsistent ? 'bg-yellow-50' : ''}`}>
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-gray-900">
                       {formatDate(report.date)}
                       {isInconsistent && (
                         <span className="ml-1 text-yellow-600">⚠️</span>
                       )}
                     </td>
-                    <td className="px-3 py-3 text-xs text-neutral-900">
+                    <td className="px-1 py-1.5 text-xs text-gray-900">
                       <div className="font-medium truncate">{report.employee_name}</div>
-                      <div className="text-[10px] text-neutral-500 truncate">{report.department}</div>
+                      <div className="text-[10px] text-gray-500 truncate">{report.department}</div>
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-gray-900">
                       {formatTime(report.morning_entry)}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-gray-900">
                       {formatTime(report.lunch_exit)}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-gray-900">
                       {formatTime(report.afternoon_entry)}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-gray-900">
                       {formatTime(report.final_exit)}
                     </td>
                     {showInternalMode ? (
                       <>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900 font-medium">
+                        <td className="px-1 py-1.5 whitespace-nowrap text-xs text-gray-900 font-medium">
                           {report.worked_hours}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-700">
+                        <td className="px-1 py-1.5 whitespace-nowrap text-xs text-gray-700">
                           {report.expected_hours || '-'}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
-                          <div className={`font-semibold ${balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-neutral-600'}`}>
+                        <td className="px-1 py-1.5 whitespace-nowrap text-xs">
+                          <div className={`font-semibold ${balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-gray-600'}`}>
                             {formatMinutes(Math.abs(balance), true)}
                             {balance > 0 ? '+' : balance < 0 ? '-' : ''}
                           </div>
-                          <div className="text-[10px] text-neutral-500">
+                          <div className="text-[10px] text-gray-500">
                             {workedMinutes}-{expectedMinutes}
                           </div>
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                        <td className="px-1 py-1.5 whitespace-nowrap text-xs">
                           {report.delay_minutes > 0 ? (
                             <span className="text-red-600 font-medium" title="Indicador informativo">
                               {formatMinutes(report.delay_minutes)}
@@ -739,7 +722,7 @@ export default function ReportsView() {
                             '-'
                           )}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                        <td className="px-1 py-1.5 whitespace-nowrap text-xs">
                           {report.early_arrival_minutes > 0 ? (
                             <span className="text-green-600 font-medium" title="Indicador informativo">
                               {formatMinutes(report.early_arrival_minutes)}
@@ -748,7 +731,7 @@ export default function ReportsView() {
                             '-'
                           )}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                        <td className="px-1 py-1.5 whitespace-nowrap text-xs">
                           {report.overtime_minutes > 0 ? (
                             <span className="text-blue-600 font-medium" title="Indicador informativo">
                               {formatMinutes(report.overtime_minutes)}
@@ -757,7 +740,7 @@ export default function ReportsView() {
                             '-'
                           )}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                        <td className="px-1 py-1.5 whitespace-nowrap text-xs">
                           {report.interval_excess_minutes && report.interval_excess_minutes > 0 ? (
                             <span className="text-orange-600 font-medium" title="Excesso de intervalo">
                               {formatMinutes(report.interval_excess_minutes)}
@@ -769,7 +752,7 @@ export default function ReportsView() {
                       </>
                     ) : (
                       <>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                        <td className="px-1 py-1.5 whitespace-nowrap text-xs bg-blue-50">
                           {report.atraso_clt_minutes && report.atraso_clt_minutes > 0 ? (
                             <span className="text-red-600 font-medium" title="Atraso CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
                               {formatMinutes(report.atraso_clt_minutes)}
@@ -778,7 +761,7 @@ export default function ReportsView() {
                             '-'
                           )}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                        <td className="px-1 py-1.5 whitespace-nowrap text-xs bg-blue-50">
                           {report.extra_clt_minutes && report.extra_clt_minutes > 0 ? (
                             <span className="text-blue-600 font-medium" title="Hora extra CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
                               {formatMinutes(report.extra_clt_minutes)}
@@ -787,11 +770,11 @@ export default function ReportsView() {
                             '-'
                           )}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                        <td className="px-1 py-1.5 whitespace-nowrap text-xs bg-blue-50">
                           {(() => {
                             const saldoClt = report.saldo_clt_minutes || 0;
                             return (
-                              <div className={`font-semibold ${saldoClt > 0 ? 'text-green-600' : saldoClt < 0 ? 'text-red-600' : 'text-neutral-600'}`}>
+                              <div className={`font-semibold ${saldoClt > 0 ? 'text-green-600' : saldoClt < 0 ? 'text-red-600' : 'text-gray-600'}`}>
                                 {formatMinutes(Math.abs(saldoClt), true)}
                                 {saldoClt > 0 ? '+' : saldoClt < 0 ? '-' : ''}
                               </div>
@@ -804,20 +787,20 @@ export default function ReportsView() {
                 );
               })}
             </tbody>
-            <tfoot className="bg-gradient-to-r from-primary-50 to-primary-100 font-semibold">
+            <tfoot className="bg-gray-50 font-semibold">
               <tr>
-                <td colSpan={6} className="px-3 py-3 text-right text-xs text-neutral-700">
+                <td colSpan={6} className="px-1 py-1.5 text-right text-xs text-gray-700">
                   Totais:
                 </td>
                 {showInternalMode ? (
                   <>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-gray-900">
                       {formatWorkedHours(reports.reduce((sum, r) => sum + (r.worked_minutes || 0), 0))}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-700">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-gray-700">
                       {formatWorkedHours(reports.reduce((sum, r) => sum + (r.expected_minutes || 0), 0))}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs">
                       {(() => {
                         const totalBalance = reports.reduce(
                           (sum, r) => {
@@ -828,39 +811,39 @@ export default function ReportsView() {
                           0
                         );
                         return (
-                          <span className={`font-semibold ${totalBalance > 0 ? 'text-green-600' : totalBalance < 0 ? 'text-red-600' : 'text-neutral-600'}`}>
+                          <span className={`font-semibold ${totalBalance > 0 ? 'text-green-600' : totalBalance < 0 ? 'text-red-600' : 'text-gray-600'}`}>
                             {formatMinutes(Math.abs(totalBalance), true)}
                             {totalBalance > 0 ? '+' : totalBalance < 0 ? '-' : ''}
                           </span>
                         );
                       })()}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-red-600">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-red-600">
                       {formatMinutes(reports.reduce((sum, r) => sum + r.delay_minutes, 0))}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-green-600">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-green-600">
                       {formatMinutes(reports.reduce((sum, r) => sum + r.early_arrival_minutes, 0))}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-blue-600">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-blue-600">
                       {formatMinutes(reports.reduce((sum, r) => sum + r.overtime_minutes, 0))}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-orange-600">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-orange-600">
                       {formatMinutes(reports.reduce((sum, r) => sum + (r.interval_excess_minutes || 0), 0))}
                     </td>
                   </>
                 ) : (
                   <>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-red-600">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-red-600 bg-blue-50">
                       {formatMinutes(reports.reduce((sum, r) => sum + (r.atraso_clt_minutes || 0), 0))}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-blue-600">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs text-blue-600 bg-blue-50">
                       {formatMinutes(reports.reduce((sum, r) => sum + (r.extra_clt_minutes || 0), 0))}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-xs bg-blue-50">
                       {(() => {
                         const totalSaldoClt = reports.reduce((sum, r) => sum + (r.saldo_clt_minutes || 0), 0);
                         return (
-                          <span className={`font-semibold ${totalSaldoClt > 0 ? 'text-green-600' : totalSaldoClt < 0 ? 'text-red-600' : 'text-neutral-600'}`}>
+                          <span className={`font-semibold ${totalSaldoClt > 0 ? 'text-green-600' : totalSaldoClt < 0 ? 'text-red-600' : 'text-gray-600'}`}>
                             {formatMinutes(Math.abs(totalSaldoClt), true)}
                             {totalSaldoClt > 0 ? '+' : totalSaldoClt < 0 ? '-' : ''}
                           </span>
@@ -877,4 +860,3 @@ export default function ReportsView() {
     </div>
   );
 }
-
