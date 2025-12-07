@@ -1,0 +1,14 @@
+No	TMNo	EnNo	Name	GMNo	Mode	In/Out	VM	Department	DateTime
+1	1	2	Maria Raquel	1	1	1	Dedo	CLÍNICA	2025-12-03 08:00:00
+2	1	2	Maria Raquel	1	1	0	Dedo	CLÍNICA	2025-12-03 12:00:00
+3	1	2	Maria Raquel	1	1	1	Dedo	CLÍNICA	2025-12-03 13:00:00
+4	1	2	Maria Raquel	1	1	0	Dedo	CLÍNICA	2025-12-03 17:00:00
+5	1	1	Marizelma de Souza	1	1	1	Dedo	PET SHOP	2025-12-03 08:15:00
+6	1	1	Marizelma de Souza	1	1	0	Dedo	PET SHOP	2025-12-03 12:00:00
+7	1	1	Marizelma de Souza	1	1	1	Dedo	PET SHOP	2025-12-03 13:00:00
+8	1	1	Marizelma de Souza	1	1	0	Dedo	PET SHOP	2025-12-03 17:30:00
+
+
+
+
+
