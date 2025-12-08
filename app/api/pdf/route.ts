@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/infrastructure/database';
+import { logger } from '@/infrastructure/logger';
 import { format, parse, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -34,9 +35,6 @@ export async function GET(request: NextRequest) {
     const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
     const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
     
-    console.log(`[PDF API] Mês solicitado: ${month}`);
-    console.log(`[PDF API] Data de início calculada: ${startDate}`);
-    console.log(`[PDF API] Data de fim calculada: ${endDate}`);
     
     // Buscar todos os registros do mês
     // Detectar se estamos usando SQLite ou PostgreSQL
@@ -89,30 +87,13 @@ export async function GET(request: NextRequest) {
     reports = reports.filter(report => {
       const reportDate = String(report.date || '').substring(0, 7); // "2025-11" ou "2025-12"
       const matches = reportDate === monthPrefix;
-      if (!matches && process.env.NODE_ENV === 'development') {
-        console.log(`[PDF API] ⚠️ Registro filtrado: data=${report.date}, mês=${reportDate}, esperado=${monthPrefix}`);
+      if (!matches) {
       }
       return matches;
     });
     
-    // Log temporário para debug (remover após correção)
-    console.log(`[PDF API] Buscando registros para employeeId=${employeeId}, month=${month}`);
-    console.log(`[PDF API] Período: ${startDate} a ${endDate}`);
-    console.log(`[PDF API] Total de registros encontrados (antes do filtro): ${reportsBeforeFilter}`);
-    console.log(`[PDF API] Total de registros encontrados (após filtro): ${reports.length}`);
-    if (reports.length > 0) {
-      console.log(`[PDF API] Primeiro registro:`, {
-        date: reports[0].date,
-        morning_entry: reports[0].morning_entry,
-        lunch_exit: reports[0].lunch_exit,
-        afternoon_entry: reports[0].afternoon_entry,
-        final_exit: reports[0].final_exit
-      });
-      console.log(`[PDF API] Primeiros 3 registros completos:`, reports.slice(0, 3));
-    } else {
-      console.log(`[PDF API] ⚠️ NENHUM REGISTRO ENCONTRADO para este funcionário e período!`);
-      console.log(`[PDF API] ⚠️ Verifique se os dados foram processados para o mês ${month}`);
-      console.log(`[PDF API] ⚠️ É necessário fazer upload e processamento dos arquivos de ponto para este mês`);
+    if (reports.length === 0) {
+      logger.warn(`[PDF API] Nenhum registro encontrado para employeeId=${employeeId}, month=${month}`);
     }
     
     // Gerar todos os dias do mês
@@ -141,26 +122,16 @@ export async function GET(request: NextRequest) {
               normalizedDate = format(parsedDate, 'yyyy-MM-dd');
             }
           } catch (e) {
-            console.log(`[PDF API] Erro ao normalizar data: ${dateStr}`, e);
+            logger.warn(`[PDF API] Erro ao normalizar data: ${dateStr}`, e);
           }
         }
       }
       
       if (normalizedDate) {
         reportsByDate.set(normalizedDate, report);
-        // Log para debug
-        if (process.env.NODE_ENV === 'development' && reportsByDate.size <= 3) {
-          console.log(`[PDF API] Mapeado: ${normalizedDate} ->`, {
-            morning_entry: report.morning_entry,
-            lunch_exit: report.lunch_exit,
-            afternoon_entry: report.afternoon_entry,
-            final_exit: report.final_exit
-          });
-        }
       }
     });
     
-    console.log(`[PDF API] Total de registros mapeados: ${reportsByDate.size}`);
     
     // Função auxiliar para formatar horário
     const formatTime = (timeValue: string | null | undefined, fieldName?: string): string => {
@@ -206,7 +177,6 @@ export async function GET(request: NextRequest) {
           if (match) {
             return `${match[1]}:${match[2]}`;
           }
-          console.log(`[PDF API] ⚠️ Erro ao formatar horário ${fieldName || ''}: ${timeStr}`);
           return '-';
         }
         
@@ -217,7 +187,6 @@ export async function GET(request: NextRequest) {
         if (match) {
           return `${match[1]}:${match[2]}`;
         }
-        console.log(`[PDF API] ⚠️ Erro ao formatar horário ${fieldName || ''}: ${timeValue}`, error);
         return '-';
       }
     };
@@ -267,13 +236,10 @@ export async function GET(request: NextRequest) {
       }
     };
     
-    // Log dos dados formatados (primeiros 3 dias)
-    console.log(`[PDF API] Dados formatados para PDF (primeiros 3 dias):`, pdfData.days.slice(0, 3));
-    console.log(`[PDF API] Total de dias no mês: ${pdfData.days.length}`);
-    console.log(`[PDF API] Dias com registros: ${pdfData.days.filter(d => d.morningEntry !== '-' || d.lunchExit !== '-' || d.afternoonEntry !== '-' || d.finalExit !== '-').length}`);
     
     return NextResponse.json(pdfData);
   } catch (error: any) {
+    logger.error('[PDF API] Erro ao gerar PDF:', error);
     return NextResponse.json(
       { error: error.message },
       { status: 500 }

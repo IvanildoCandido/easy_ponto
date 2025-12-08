@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/infrastructure/database';
 import { calculateDailyRecords } from '@/application/daily-calculation-service';
+import { logger } from '@/infrastructure/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     if (date) {
       // Recalcular apenas uma data específica
-      console.log(`[recalculate] Recalculando registros da data: ${date}`);
+      logger.info(`[recalculate] Recalculando registros da data: ${date}`);
       await calculateDailyRecords(date);
       
       return NextResponse.json({
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // Recalcular todas as datas que têm registros de ponto
-      console.log('[recalculate] Recalculando TODOS os registros...');
+      logger.info('[recalculate] Recalculando TODOS os registros...');
       
       // Buscar todas as datas únicas que têm registros de ponto
       const isProduction = process.env.NODE_ENV === 'production';
@@ -56,12 +57,11 @@ export async function POST(request: NextRequest) {
         try {
           await calculateDailyRecords(recordDate);
           successCount++;
-          console.log(`[recalculate] ✓ Data ${recordDate} recalculada`);
         } catch (error: any) {
           errorCount++;
           const errorMsg = `Erro ao recalcular ${recordDate}: ${error.message}`;
           errors.push(errorMsg);
-          console.error(`[recalculate] ✗ ${errorMsg}`);
+          logger.error(`[recalculate] ${errorMsg}`);
         }
       }
 
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       });
     }
   } catch (error: any) {
-    console.error('[recalculate] Erro:', error);
+    logger.error('[recalculate] Erro:', error);
     return NextResponse.json(
       { 
         success: false,

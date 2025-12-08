@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface Employee {
   id: number;
@@ -52,6 +52,35 @@ export default function ReportsView() {
   const [loading, setLoading] = useState(false);
   const [showInternalMode, setShowInternalMode] = useState(false); // false = CLT (padrão), true = Controle Interno
 
+  const loadEmployees = async () => {
+    try {
+      const response = await fetch('/api/employees');
+      const data = await response.json();
+      setEmployees(data);
+    } catch (error) {
+      // Erro silencioso - usuário verá lista vazia
+    }
+  };
+
+  const loadReports = useCallback(async () => {
+    if (!startDate || !endDate) return;
+    
+    setLoading(true);
+    try {
+      let url = `/api/reports?startDate=${startDate}&endDate=${endDate}`;
+      if (selectedEmployee) {
+        url += `&employeeId=${selectedEmployee}`;
+      }
+      const response = await fetch(url);
+      const data = await response.json();
+      setReports(data);
+    } catch (error) {
+      // Erro silencioso - usuário verá lista vazia
+    } finally {
+      setLoading(false);
+    }
+  }, [startDate, endDate, selectedEmployee]);
+
   useEffect(() => {
     loadEmployees();
     // Definir datas padrão (últimos 30 dias)
@@ -63,20 +92,8 @@ export default function ReportsView() {
   }, []);
 
   useEffect(() => {
-    if (startDate && endDate) {
-      loadReports();
-    }
-  }, [selectedEmployee, startDate, endDate]);
-
-  const loadEmployees = async () => {
-    try {
-      const response = await fetch('/api/employees');
-      const data = await response.json();
-      setEmployees(data);
-    } catch (error) {
-      console.error('Erro ao carregar funcionários:', error);
-    }
-  };
+    loadReports();
+  }, [loadReports]);
 
   const handleStartDateChange = (date: string) => {
     setStartDate(date);
@@ -92,23 +109,6 @@ export default function ReportsView() {
     }
   };
 
-  const loadReports = async () => {
-    setLoading(true);
-    try {
-      let url = `/api/reports?startDate=${startDate}&endDate=${endDate}`;
-      if (selectedEmployee) {
-        url += `&employeeId=${selectedEmployee}`;
-      }
-      const response = await fetch(url);
-      const data = await response.json();
-      setReports(data);
-    } catch (error) {
-      console.error('Erro ao carregar relatórios:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
 
   const formatTime = (time: string | null) => {
     if (!time) return '-';
@@ -118,8 +118,34 @@ export default function ReportsView() {
     });
   };
 
-  const formatDate = (date: string) => {
-    const dateObj = new Date(date + 'T00:00:00');
+  const formatDate = (date: string | Date | null | undefined) => {
+    if (!date) return 'Data inválida';
+    
+    // Normalizar para string se for Date object
+    let dateStr: string;
+    if (date instanceof Date) {
+      dateStr = date.toISOString().split('T')[0];
+    } else if (typeof date === 'string') {
+      // Se já está no formato yyyy-MM-dd, usar diretamente
+      if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        dateStr = date;
+      } else {
+        // Tentar parsear como Date e converter
+        const parsed = new Date(date);
+        if (isNaN(parsed.getTime())) {
+          return 'Data inválida';
+        }
+        dateStr = parsed.toISOString().split('T')[0];
+      }
+    } else {
+      return 'Data inválida';
+    }
+    
+    const dateObj = new Date(dateStr + 'T00:00:00');
+    if (isNaN(dateObj.getTime())) {
+      return 'Data inválida';
+    }
+    
     const formattedDate = dateObj.toLocaleDateString('pt-BR');
     const dayOfWeek = dateObj.toLocaleDateString('pt-BR', { weekday: 'short' }).toUpperCase();
     return `${formattedDate} - ${dayOfWeek}`;
@@ -388,18 +414,6 @@ export default function ReportsView() {
         return;
       }
       
-      // Log temporário para debug
-      console.log('[PDF Frontend] Dados recebidos da API:', {
-        employee: data.employee,
-        month: data.month,
-        totalDays: data.days?.length,
-        firstDay: data.days?.[0],
-        daysWithData: data.days?.filter((d: any) => 
-          d.morningEntry !== '-' || d.lunchExit !== '-' || 
-          d.afternoonEntry !== '-' || d.finalExit !== '-'
-        ).length
-      });
-      
       if (!data.days || data.days.length === 0) {
         alert('Nenhum dado encontrado para gerar o PDF. Verifique se há registros processados para este funcionário e mês.');
         return;
@@ -417,7 +431,6 @@ export default function ReportsView() {
       const fileName = `Folha_Ponto_${data.employee.name.replace(/\s+/g, '_')}_${data.monthYear}.pdf`;
       pdf.save(fileName);
     } catch (error) {
-      console.error('Erro ao gerar PDF:', error);
       alert('Erro ao gerar PDF. Tente novamente.');
     }
   };
@@ -452,12 +465,10 @@ export default function ReportsView() {
           const data = await response.json();
           
           if (response.status !== 200) {
-            console.warn(`Erro ao buscar dados para ${employee.name}:`, data.error);
             continue;
           }
           
           if (!data.days || data.days.length === 0) {
-            console.warn(`Nenhum dado encontrado para ${employee.name}`);
             continue;
           }
           
@@ -471,7 +482,7 @@ export default function ReportsView() {
           isFirstPage = false;
           employeesWithData++;
         } catch (error) {
-          console.error(`Erro ao processar funcionário ${employee.name}:`, error);
+          // Erro ao processar funcionário - continua com os próximos
           continue;
         }
       }
@@ -488,7 +499,6 @@ export default function ReportsView() {
       
       alert(`PDF gerado com sucesso! ${employeesWithData} funcionário(s) incluído(s).`);
     } catch (error) {
-      console.error('Erro ao gerar PDF de todos os funcionários:', error);
       alert('Erro ao gerar PDF. Tente novamente.');
     }
   };

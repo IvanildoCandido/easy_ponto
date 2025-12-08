@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseFileContent, processTimeRecords } from '@/infrastructure/file-processor';
 import { calculateDailyRecords } from '@/application/daily-calculation-service';
+import { logger } from '@/infrastructure/logger';
 import { Buffer } from 'buffer';
 
 export const dynamic = 'force-dynamic';
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
         content = await file.text();
       }
     } catch (error: any) {
-      console.error('Erro ao ler arquivo:', error);
+      logger.error('Erro ao ler arquivo:', error);
       return NextResponse.json(
         { error: 'Erro ao ler o arquivo. Verifique se é um arquivo de texto válido.' },
         { status: 400 }
@@ -61,15 +62,10 @@ export async function POST(request: NextRequest) {
     
     let records;
     try {
-      // Log do conteúdo para debug (apenas primeiras 500 caracteres)
-      console.log('Conteúdo do arquivo (primeiros 500 chars):', content.substring(0, 500));
-      console.log('Tamanho do arquivo:', content.length, 'caracteres');
-      
       records = parseFileContent(content);
-      console.log('Registros parseados:', records.length);
+      logger.info(`Registros parseados: ${records.length}`);
     } catch (error: any) {
-      console.error('Erro ao fazer parse do arquivo:', error);
-      console.error('Stack trace:', error.stack);
+      logger.error('Erro ao fazer parse do arquivo:', error);
       return NextResponse.json(
         { 
           error: `Erro ao processar o arquivo: ${error.message || 'Formato inválido'}`,
@@ -88,11 +84,10 @@ export async function POST(request: NextRequest) {
     
     // Processar registros
     try {
-      console.log(`Iniciando processamento de ${records.length} registros...`);
+      logger.info(`Iniciando processamento de ${records.length} registros...`);
       await processTimeRecords(records);
-      console.log('Registros salvos com sucesso no banco de dados');
     } catch (error: any) {
-      console.error('Erro ao processar registros no banco:', error);
+      logger.error('Erro ao processar registros no banco:', error);
       
       // Mensagens de erro mais específicas
       let errorMessage = error.message || 'Erro desconhecido';
@@ -123,7 +118,7 @@ export async function POST(request: NextRequest) {
       try {
         await calculateDailyRecords(date);
       } catch (error: any) {
-        console.error(`Erro ao calcular registros para data ${date}:`, error);
+        logger.error(`Erro ao calcular registros para data ${date}:`, error);
         // Continua processando outras datas mesmo se uma falhar
       }
     }
@@ -135,7 +130,7 @@ export async function POST(request: NextRequest) {
       datesProcessed: Array.from(uniqueDates)
     });
   } catch (error: any) {
-    console.error('Erro geral ao processar arquivo:', error);
+    logger.error('Erro geral ao processar arquivo:', error);
     return NextResponse.json(
       { error: error.message || 'Erro ao processar arquivo' },
       { status: 500 }

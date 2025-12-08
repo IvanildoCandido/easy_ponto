@@ -48,14 +48,30 @@ pool.query('SELECT NOW() as current_time, COUNT(*) as employee_count FROM employ
     console.error('Mensagem:', error.message);
     
     if (error.code === 'ENOTFOUND') {
+      const hostname = connectionString.match(/@([^:]+)/)?.[1] || 'desconhecido';
       console.error('\n💡 Dica: O DNS não conseguiu resolver o hostname.');
-      console.error('   Verifique:');
-      console.error('   1. Sua conexão com a internet');
-      console.error('   2. Se o hostname está correto:', connectionString.match(/@([^:]+)/)?.[1]);
-      console.error('   3. Se há firewall bloqueando');
+      console.error(`   Hostname: ${hostname}`);
+      console.error('\n   Verifique:');
+      console.error('   1. Acesse https://app.supabase.com e verifique se o projeto está ativo');
+      console.error('   2. Vá em Project Settings > Database > Connection string');
+      console.error('   3. Copie a connection string completa (formato: postgresql://postgres:[PASSWORD]@db.[PROJECT].supabase.co:5432/postgres)');
+      console.error('   4. Se a senha contém @, substitua por %40 na connection string');
+      console.error('   5. Verifique sua conexão com a internet');
+      console.error('   6. Verifique se há firewall bloqueando conexões PostgreSQL (porta 5432)');
+      console.error('\n   Exemplo de connection string correta:');
+      console.error('   postgresql://postgres:SUA_SENHA@db.jxailblhblgcmsmyokaq.supabase.co:5432/postgres');
     } else if (error.code === '28P01') {
       console.error('\n💡 Dica: Erro de autenticação.');
-      console.error('   Verifique se a senha está correta e se o @ está escapado como %40');
+      console.error('   Verifique:');
+      console.error('   1. Se a senha está correta');
+      console.error('   2. Se o @ na senha está escapado como %40');
+      console.error('   3. Obtenha a senha atual em: Project Settings > Database > Database password');
+    } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED') {
+      console.error('\n💡 Dica: Timeout ou conexão recusada.');
+      console.error('   Verifique:');
+      console.error('   1. Se o projeto Supabase está ativo (não pausado)');
+      console.error('   2. Se há firewall bloqueando a porta 5432');
+      console.error('   3. Sua conexão com a internet');
     }
     
     pool.end();

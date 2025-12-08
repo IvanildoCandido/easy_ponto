@@ -82,3 +82,4 @@ Para manter compatibilidade com código existente, foram criados arquivos de ree
 ✅ UI continua exibindo os mesmos dados
 ✅ Nenhuma quebra de funcionalidade
 
+

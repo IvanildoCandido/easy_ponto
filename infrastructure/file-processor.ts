@@ -5,6 +5,7 @@
 
 import { query } from './database';
 import { TimeRecord } from '../lib/types';
+import { logger } from './logger';
 
 export function parseFileContent(content: string): TimeRecord[] {
   if (!content || typeof content !== 'string') {
@@ -63,14 +64,6 @@ export function parseFileContent(content: string): TimeRecord[] {
   
   const records: TimeRecord[] = [];
   
-  // Debug apenas em desenvolvimento
-  if (process.env.NODE_ENV === 'development') {
-    console.log('Cabeçalhos encontrados:', headers);
-    console.log('Número de cabeçalhos:', headers.length);
-    console.log('Separador detectado:', typeof separator === 'string' ? 'TAB' : 'ESPAÇOS');
-    console.log('Chaves obrigatórias encontradas:', { enNoKey, nameKey, dateTimeKey });
-  }
-  
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
     if (!line) continue;
@@ -89,10 +82,7 @@ export function parseFileContent(content: string): TimeRecord[] {
     }
     
     if (values.length < headers.length) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn(`Linha ${i + 1} ignorada: número insuficiente de colunas (esperado: ${headers.length}, encontrado: ${values.length})`);
-        console.warn(`Valores encontrados:`, values);
-      }
+      logger.warn(`Linha ${i + 1} ignorada: número insuficiente de colunas (esperado: ${headers.length}, encontrado: ${values.length})`);
       continue;
     }
     
@@ -120,12 +110,6 @@ export function parseFileContent(content: string): TimeRecord[] {
     
     // Validar se os campos têm valores válidos
     if (enNo === undefined || enNo === null || name === '' || dateTime === '') {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn(`Linha ${i + 1} ignorada: campos obrigatórios inválidos`);
-        console.warn(`EnNo: ${enNo}, Name: "${name}", DateTime: "${dateTime}"`);
-        console.warn(`Record completo:`, JSON.stringify(record, null, 2));
-        console.warn(`Chaves do record:`, Object.keys(record));
-      }
       continue;
     }
     
@@ -158,13 +142,13 @@ export async function processTimeRecords(records: TimeRecord[]) {
   // Isso evita duplicatas quando o mesmo arquivo é carregado novamente
   if (datesToProcess.size > 0) {
     const datesArray = Array.from(datesToProcess);
-    console.log(`🗑️  Removendo registros existentes das datas: ${datesArray.join(', ')}`);
+    logger.info(`Removendo registros existentes das datas: ${datesArray.join(', ')}`);
     
     if (useSupabase) {
-      // Postgres: usar DATE() function
+      // Postgres: usar DATE() function com timezone local
       const placeholders = datesArray.map((_, i) => `$${i + 1}`).join(', ');
       await query(
-        `DELETE FROM time_records WHERE DATE(datetime) IN (${placeholders})`,
+        `DELETE FROM time_records WHERE DATE(datetime AT TIME ZONE 'America/Sao_Paulo') IN (${placeholders})`,
         datesArray
       );
       // Também deletar processed_records das mesmas datas
@@ -185,7 +169,6 @@ export async function processTimeRecords(records: TimeRecord[]) {
         );
       }
     }
-    console.log(`✅ Registros antigos removidos para ${datesArray.length} data(s)`);
   }
 
   // Primeiro, inserir todos os funcionários únicos de uma vez
@@ -245,7 +228,14 @@ export async function processTimeRecords(records: TimeRecord[]) {
     for (const record of batch) {
       const employeeId = employeeMap.get(record.EnNo);
       if (employeeId) {
-        values.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7})`);
+        // Para Postgres, especificar que o datetime está no timezone local (America/Sao_Paulo)
+        // Isso converte o timestamp sem timezone para timestamptz assumindo que está em America/Sao_Paulo
+        if (useSupabase) {
+          // Usar CAST para converter string para timestamp e depois aplicar timezone
+          values.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, ($${paramIndex + 7}::timestamp AT TIME ZONE 'America/Sao_Paulo'))`);
+        } else {
+          values.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7})`);
+        }
         params.push(
           employeeId,
           record.No,
@@ -271,13 +261,9 @@ export async function processTimeRecords(records: TimeRecord[]) {
       );
     }
 
-    // Log de progresso
-    const processed = Math.min(i + BATCH_SIZE, records.length);
-    if (processed % 50 === 0 || processed === records.length) {
-      console.log(`Processados ${processed} de ${records.length} registros...`);
-    }
   }
 
-  console.log('Todos os registros foram salvos com sucesso!');
+  logger.info(`Todos os ${records.length} registros foram salvos com sucesso`);
 }
+
 

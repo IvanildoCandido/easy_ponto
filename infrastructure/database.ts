@@ -6,6 +6,7 @@
 
 import path from 'path';
 import fs from 'fs';
+import { logger } from './logger';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const useSupabase = isProduction && process.env.SUPABASE_DB_URL;
@@ -95,62 +96,86 @@ if (!useSupabase) {
 
     CREATE INDEX IF NOT EXISTS idx_time_records_employee_date ON time_records(employee_id, datetime);
     CREATE INDEX IF NOT EXISTS idx_processed_records_employee_date ON processed_records(employee_id, date);
-    
-    -- Migração: adicionar campo status se não existir (para bancos existentes)
-    -- SQLite não suporta ALTER TABLE ADD COLUMN IF NOT EXISTS, então usamos try/catch
-    -- Para Postgres, isso será tratado na migração
   `);
   
   // Adicionar campos novos se não existirem (SQLite)
-  if (!useSupabase && sqliteDb) {
-    const newColumns = [
-      { name: 'status', type: 'TEXT DEFAULT \'OK\'' },
-      { name: 'early_exit_seconds', type: 'INTEGER DEFAULT 0' },
-      { name: 'balance_seconds', type: 'INTEGER DEFAULT 0' },
-      { name: 'expected_minutes', type: 'INTEGER DEFAULT 0' },
-      { name: 'interval_excess_seconds', type: 'INTEGER DEFAULT 0' },
-      { name: 'atraso_clt_minutes', type: 'INTEGER DEFAULT 0' },
-      { name: 'chegada_antec_clt_minutes', type: 'INTEGER DEFAULT 0' },
-      { name: 'extra_clt_minutes', type: 'INTEGER DEFAULT 0' },
-      { name: 'saida_antec_clt_minutes', type: 'INTEGER DEFAULT 0' },
-      { name: 'saldo_clt_minutes', type: 'INTEGER DEFAULT 0' },
-    ];
-    
-    for (const col of newColumns) {
-      try {
-        sqliteDb.exec(`ALTER TABLE processed_records ADD COLUMN ${col.name} ${col.type}`);
-        console.log(`[db] Campo ${col.name} adicionado à tabela processed_records`);
-      } catch (error: any) {
-        // Campo já existe, ignorar erro
-        if (!error.message.includes('duplicate column')) {
-          console.warn(`[db] Erro ao adicionar campo ${col.name}:`, error.message);
-        }
+  const newColumns = [
+    { name: 'status', type: 'TEXT DEFAULT \'OK\'' },
+    { name: 'early_exit_seconds', type: 'INTEGER DEFAULT 0' },
+    { name: 'balance_seconds', type: 'INTEGER DEFAULT 0' },
+    { name: 'expected_minutes', type: 'INTEGER DEFAULT 0' },
+    { name: 'interval_excess_seconds', type: 'INTEGER DEFAULT 0' },
+    { name: 'atraso_clt_minutes', type: 'INTEGER DEFAULT 0' },
+    { name: 'chegada_antec_clt_minutes', type: 'INTEGER DEFAULT 0' },
+    { name: 'extra_clt_minutes', type: 'INTEGER DEFAULT 0' },
+    { name: 'saida_antec_clt_minutes', type: 'INTEGER DEFAULT 0' },
+    { name: 'saldo_clt_minutes', type: 'INTEGER DEFAULT 0' },
+  ];
+  
+  for (const col of newColumns) {
+    try {
+      sqliteDb.exec(`ALTER TABLE processed_records ADD COLUMN ${col.name} ${col.type}`);
+    } catch (error: any) {
+      // Campo já existe, ignorar erro
+      if (!error.message.includes('duplicate column')) {
+        logger.warn(`[db] Erro ao adicionar campo ${col.name}:`, error.message);
       }
     }
   }
 
-  console.log('[db] Usando SQLite (desenvolvimento)');
+  logger.info('[db] Usando SQLite (desenvolvimento)');
 } else {
   // Inicializar Postgres para produção
   const { Pool } = require('pg');
-  const connectionString = process.env.SUPABASE_DB_URL;
+  let connectionString = process.env.SUPABASE_DB_URL;
 
   if (!connectionString) {
     throw new Error('SUPABASE_DB_URL não definida em produção');
   }
 
+  // Validar e processar connection string
+  try {
+    if (!connectionString.startsWith('postgresql://') && !connectionString.startsWith('postgres://')) {
+      throw new Error('SUPABASE_DB_URL deve começar com postgresql:// ou postgres://');
+    }
+
+    // Extrair e validar hostname
+    const hostMatch = connectionString.match(/@([^:]+):/);
+    if (hostMatch) {
+      const hostname = hostMatch[1];
+    }
+  } catch (error: any) {
+    logger.error('[db] Erro ao validar SUPABASE_DB_URL:', error.message);
+    throw error;
+  }
+
   pgPool = new Pool({
     connectionString,
     max: 10,
-    connectionTimeoutMillis: 15000,
+    connectionTimeoutMillis: 30000,
     idleTimeoutMillis: 30000,
     statement_timeout: 60000,
     ssl: {
-      rejectUnauthorized: false, // Supabase requer SSL mas aceita certificados auto-assinados
+      rejectUnauthorized: false,
     },
   });
 
-  console.log('[db] Usando Supabase/Postgres (produção)');
+  // Testar conexão na inicialização
+  pgPool.query('SELECT 1 as test')
+    .then(() => {
+      logger.info('[db] Conexão com Supabase/Postgres estabelecida com sucesso');
+    })
+    .catch((error: any) => {
+      logger.error('[db] Erro ao conectar ao Supabase:', error.message);
+      logger.error('[db] Código do erro:', error.code);
+      if (error.code === 'ENOTFOUND') {
+        logger.error('[db] Problema de DNS. Verifique connection string e conexão com internet');
+      }
+      // Não inicializar SQLite em produção - falhar explicitamente
+      throw new Error(`Não foi possível conectar ao Supabase: ${error.message}`);
+    });
+
+  logger.info('[db] Usando Supabase/Postgres (produção)');
 }
 
 // Função auxiliar para detectar se a query retorna dados (SELECT) ou não (INSERT/UPDATE/DELETE)
@@ -192,7 +217,17 @@ export async function query<T = any>(text: string, params?: any[]): Promise<T[]>
       return result.rows as T[];
     } catch (error: any) {
       if (error.code === 'ENOTFOUND' || error.code === 'EADDRNOTAVAIL' || error.code === 'EHOSTUNREACH') {
-        throw new Error(`Erro de conexão com o banco de dados: ${error.message}. Verifique sua conexão com a internet e a URL do Supabase.`);
+        const hostMatch = process.env.SUPABASE_DB_URL?.match(/@([^:]+):/);
+        const hostname = hostMatch ? hostMatch[1] : 'desconhecido';
+        throw new Error(
+          `Erro de conexão com o banco de dados: ${error.message}\n` +
+          `Hostname: ${hostname}\n` +
+          `Verifique:\n` +
+          `1. Se o projeto Supabase está ativo (https://app.supabase.com)\n` +
+          `2. Se a connection string no .env.local está correta\n` +
+          `3. Sua conexão com a internet\n` +
+          `4. Execute: node scripts/test-supabase-connection.js para testar`
+        );
       }
       throw error;
     }
@@ -221,7 +256,17 @@ export async function queryOne<T = any>(text: string, params?: any[]): Promise<T
       return (result.rows[0] as T) ?? null;
     } catch (error: any) {
       if (error.code === 'ENOTFOUND' || error.code === 'EADDRNOTAVAIL' || error.code === 'EHOSTUNREACH') {
-        throw new Error(`Erro de conexão com o banco de dados: ${error.message}. Verifique sua conexão com a internet e a URL do Supabase.`);
+        const hostMatch = process.env.SUPABASE_DB_URL?.match(/@([^:]+):/);
+        const hostname = hostMatch ? hostMatch[1] : 'desconhecido';
+        throw new Error(
+          `Erro de conexão com o banco de dados: ${error.message}\n` +
+          `Hostname: ${hostname}\n` +
+          `Verifique:\n` +
+          `1. Se o projeto Supabase está ativo (https://app.supabase.com)\n` +
+          `2. Se a connection string no .env.local está correta\n` +
+          `3. Sua conexão com a internet\n` +
+          `4. Execute: node scripts/test-supabase-connection.js para testar`
+        );
       }
       throw error;
     }
@@ -264,4 +309,3 @@ export const pool = useSupabase ? pgPool : {
 };
 
 export default useSupabase ? pgPool : sqliteDb;
-

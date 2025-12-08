@@ -11,6 +11,7 @@ import {
   type PunchTimes,
   type ScheduledTimes,
 } from '../domain/time-calculation';
+import { logger } from '../infrastructure/logger';
 
 /**
  * Calcula e salva os registros processados de um dia específico
@@ -22,9 +23,10 @@ export async function calculateDailyRecords(date: string) {
   const isProduction = process.env.NODE_ENV === 'production';
   const useSupabase = isProduction && process.env.SUPABASE_DB_URL;
   
+  // Para Postgres, converter datetime de volta para timezone local ao recuperar
   const records = await query<any>(
     useSupabase
-      ? `SELECT * FROM time_records WHERE DATE(datetime) = $1 ORDER BY employee_id, datetime`
+      ? `SELECT *, datetime AT TIME ZONE 'America/Sao_Paulo' as datetime_local FROM time_records WHERE DATE(datetime AT TIME ZONE 'America/Sao_Paulo') = $1 ORDER BY employee_id, datetime`
       : `SELECT * FROM time_records WHERE datetime LIKE $1 ORDER BY employee_id, datetime`,
     useSupabase ? [date] : [`${date}%`]
   );
@@ -47,8 +49,20 @@ export async function calculateDailyRecords(date: string) {
   for (const [employeeId, employeeRecords] of Object.entries(byEmployee)) {
     const empId = parseInt(employeeId);
     
+    // Normalizar datetime para string (Postgres retorna Date object, SQLite retorna string)
+    // Se houver datetime_local (Postgres com timezone), usar ele; senão usar datetime
+    const normalizedRecords = employeeRecords.map(record => {
+      const dt = record.datetime_local || record.datetime;
+      return {
+        ...record,
+        datetime: typeof dt === 'string' 
+          ? dt 
+          : format(new Date(dt), 'yyyy-MM-dd HH:mm:ss')
+      };
+    });
+    
     // Ordenar por data/hora
-    employeeRecords.sort((a, b) => 
+    normalizedRecords.sort((a, b) => 
       new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
     );
     
@@ -57,7 +71,7 @@ export async function calculateDailyRecords(date: string) {
     const uniqueRecords: any[] = [];
     const seenKeys = new Set<string>();
     
-    for (const record of employeeRecords) {
+    for (const record of normalizedRecords) {
       const key = `${record.datetime}|${record.in_out}`;
       if (!seenKeys.has(key)) {
         seenKeys.add(key);
@@ -77,11 +91,8 @@ export async function calculateDailyRecords(date: string) {
         )
       : null;
     
-    if (process.env.NODE_ENV === 'development') {
-      if (!schedule) {
-        console.log(`\n=== Funcionário ${empId} - ${date} (dia da semana: ${dayOfWeek}) ===`);
-        console.log(`⚠️  ATENÇÃO: Nenhum schedule encontrado para este funcionário neste dia!`);
-      }
+    if (!schedule) {
+      logger.warn(`Funcionário ${empId} - ${date}: Nenhum schedule encontrado para este dia`);
     }
     
     // Processar registros únicos em ordem cronológica para identificar os 4 pontos
@@ -89,13 +100,19 @@ export async function calculateDailyRecords(date: string) {
     // Mas manter os segundos originais para cálculo preciso
     const timeGroups = new Map<string, any[]>();
     for (const record of uniqueRecords) {
+      // Converter datetime para string se necessário (Postgres retorna Date object)
+      const datetimeStr = typeof record.datetime === 'string' 
+        ? record.datetime 
+        : format(new Date(record.datetime), 'yyyy-MM-dd HH:mm:ss');
+      
       // Agrupar por hora:minuto (sem segundos) para identificar horários únicos
       // Formato: "2025-12-05 06:55:24" -> "2025-12-05 06:55"
-      const timeKey = record.datetime.substring(0, 16); // "2025-12-05 06:55"
+      const timeKey = datetimeStr.substring(0, 16); // "2025-12-05 06:55"
       if (!timeGroups.has(timeKey)) {
         timeGroups.set(timeKey, []);
       }
-      timeGroups.get(timeKey)!.push(record);
+      // Normalizar datetime para string em todos os registros
+      timeGroups.get(timeKey)!.push({ ...record, datetime: datetimeStr });
     }
     
     // Para cada grupo de horário, pegar a primeira batida (mais precisa)
@@ -117,14 +134,6 @@ export async function calculateDailyRecords(date: string) {
     let lunchExit: string | null = null;
     let afternoonEntry: string | null = null;
     let finalExit: string | null = null;
-    
-    // Debug: log dos registros
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`Funcionário ${empId} - ${date}: ${employeeRecords.length} registros totais, ${uniqueByTime.length} horários únicos`);
-      uniqueByTime.forEach((r, idx) => {
-        console.log(`  ${idx + 1}. ${r.datetime} - in_out: ${r.in_out}`);
-      });
-    }
     
     // NOVA LÓGICA (simplificada, ignorando completamente In/Out):
     // - Se houver 4 ou mais batidas no dia:
@@ -179,15 +188,6 @@ export async function calculateDailyRecords(date: string) {
       }
     }
     
-    // Debug: log dos pontos identificados
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`Pontos identificados para funcionário ${empId}:`);
-      console.log(`  Entrada manhã: ${morningEntry}`);
-      console.log(`  Saída almoço: ${lunchExit}`);
-      console.log(`  Entrada tarde: ${afternoonEntry}`);
-      console.log(`  Saída final: ${finalExit}`);
-    }
-    
     // Para compatibilidade, manter firstEntry e lastExit
     const firstEntry = morningEntry || afternoonEntry;
     const lastExit = finalExit || lunchExit;
@@ -211,27 +211,6 @@ export async function calculateDailyRecords(date: string) {
     // Calcular usando o novo modelo: Saldo = HorasTrabalhadas - HorasPrevistas
     const summary = computeDaySummaryV2(punchTimes, scheduledTimes, date);
     
-    // Logs detalhados em desenvolvimento
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`\n=== Cálculo V2 (Horas Trabalhadas - Horas Previstas) para funcionário ${empId} - ${date} ===`);
-      console.log(`Status: ${summary.status}`);
-      console.log(`Horários previstos aplicados:`, scheduledTimes);
-      console.log(`Batidas recebidas:`, punchTimes);
-      summary.logs.forEach(log => console.log(`  ${log}`));
-      console.log(`Resultado final:`);
-      console.log(`  Horas trabalhadas: ${summary.workedMinutes}min (${summary.workedSeconds}s)`);
-      console.log(`  Horas previstas: ${summary.expectedMinutes}min (${summary.expectedSeconds}s)`);
-      console.log(`  Saldo: ${summary.balanceMinutes}min (${summary.balanceSeconds}s)`);
-      console.log(`⚠️ VALOR QUE SERÁ SALVO NO BANCO: worked_minutes = ${summary.workedMinutes}`);
-      console.log(`Indicadores informativos:`);
-      console.log(`  Atraso: ${summary.delayMinutes}min`);
-      console.log(`  Chegada antecipada: ${summary.earlyArrivalMinutes}min`);
-      console.log(`  Hora extra: ${summary.overtimeMinutes}min`);
-      console.log(`  Saída antecipada: ${summary.earlyExitMinutes}min`);
-      if (summary.intervalExcessSeconds > 0) {
-        console.log(`  ⚠️ Excesso de intervalo: ${Math.floor(summary.intervalExcessSeconds / 60)}min`);
-      }
-    }
     
     // Preparar expected_start e expected_end para compatibilidade
     const workDateStr = format(workDate, 'yyyy-MM-dd');

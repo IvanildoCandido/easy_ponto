@@ -56,3 +56,4 @@ export function timeToSeconds(timeStr: string): number {
   return hours * 3600 + minutes * 60;
 }
 
+

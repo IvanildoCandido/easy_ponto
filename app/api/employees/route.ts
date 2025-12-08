@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/infrastructure/database';
+import { logger } from '@/infrastructure/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,8 +9,7 @@ export async function GET() {
     const employees = await query('SELECT * FROM employees ORDER BY name');
     return NextResponse.json(employees || []);
   } catch (error: any) {
-    console.error('[api/employees] Erro ao buscar funcionários:', error);
-    // Retornar array vazio em caso de erro para evitar crash no frontend
+    logger.error('[api/employees] Erro ao buscar funcionários:', error);
     return NextResponse.json([], { status: 500 });
   }
 }

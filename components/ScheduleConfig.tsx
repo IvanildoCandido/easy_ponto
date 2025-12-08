@@ -91,7 +91,7 @@ export default function ScheduleConfig() {
       const data = await response.json();
       setEmployees(data);
     } catch (error) {
-      console.error('Erro ao carregar funcionários:', error);
+      // Erro silencioso - usuário verá lista vazia
     }
   };
 
@@ -115,7 +115,7 @@ export default function ScheduleConfig() {
       
       setSchedules(allSchedules);
     } catch (error) {
-      console.error('Erro ao carregar horários:', error);
+      // Erro silencioso - usuário verá horários padrão
     }
   };
 
@@ -166,7 +166,6 @@ export default function ScheduleConfig() {
       setMessage({ type: 'success', text: 'Horários salvos com sucesso!' });
       loadSchedules(selectedEmployee);
     } catch (error: any) {
-      console.error('Erro ao salvar horários:', error);
       setMessage({ type: 'error', text: error.message || 'Erro ao salvar horários' });
     } finally {
       setLoading(false);

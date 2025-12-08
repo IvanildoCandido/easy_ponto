@@ -193,3 +193,4 @@ Esses valores podem ser ajustados no código se necessário, mas devem seguir a 
 - Interpretação usual em sistemas de ponto no mercado brasileiro
 
 
+
