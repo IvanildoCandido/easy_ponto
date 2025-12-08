@@ -4,18 +4,19 @@
  * - Produção: Supabase/Postgres (via variável SUPABASE_DB_URL)
  */
 
-import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const useSupabase = isProduction && process.env.SUPABASE_DB_URL;
 
-let sqliteDb: Database.Database | null = null;
+let sqliteDb: any = null;
 let pgPool: any = null;
 
 // Inicializar SQLite para desenvolvimento
 if (!useSupabase) {
+  // Importar better-sqlite3 apenas em desenvolvimento para evitar problemas na Vercel
+  const Database = require('better-sqlite3');
   const dbPath = path.join(process.cwd(), 'database', 'easy_ponto.db');
   const dbDir = path.dirname(dbPath);
   
