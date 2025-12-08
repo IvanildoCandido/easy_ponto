@@ -3,6 +3,8 @@ import { parseFileContent, processTimeRecords } from '@/infrastructure/file-proc
 import { calculateDailyRecords } from '@/application/daily-calculation-service';
 import { Buffer } from 'buffer';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();

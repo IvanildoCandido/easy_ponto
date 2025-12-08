@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/infrastructure/database';
 import { calculateDailyRecords } from '@/application/daily-calculation-service';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Endpoint para recalcular todos os registros processados
  * Útil após mudanças nas regras de cálculo (ex: migração para CLT)
