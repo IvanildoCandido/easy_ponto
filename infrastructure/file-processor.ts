@@ -124,8 +124,8 @@ export function parseFileContent(content: string): TimeRecord[] {
 }
 
 export async function processTimeRecords(records: TimeRecord[]) {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const useSupabase = isProduction && process.env.SUPABASE_DB_URL;
+  // Detectar Supabase baseado na existência de SUPABASE_DB_URL
+  const useSupabase = !!process.env.SUPABASE_DB_URL;
 
   // Extrair datas únicas dos registros que serão processados
   const datesToProcess = new Set<string>();

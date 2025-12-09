@@ -37,63 +37,78 @@ export async function GET(request: NextRequest) {
     
     
     // Buscar todos os registros do mês
-    // Detectar se estamos usando SQLite ou PostgreSQL
-    const isProduction = process.env.NODE_ENV === 'production';
-    const useSupabase = isProduction && process.env.SUPABASE_DB_URL;
+    // A função query() do database.ts já detecta automaticamente se está usando Supabase ou SQLite
+    // Para Supabase (Postgres): o campo date é do tipo DATE
+    // Para SQLite: será convertido automaticamente pela função convertPostgresToSqlite
+    let reports = (await query(
+      `
+        SELECT 
+          pr.id,
+          pr.employee_id,
+          pr.date,
+          pr.first_entry,
+          pr.last_exit,
+          pr.morning_entry,
+          pr.lunch_exit,
+          pr.afternoon_entry,
+          pr.final_exit,
+          pr.expected_start,
+          pr.expected_end,
+          pr.delay_seconds,
+          pr.early_arrival_seconds,
+          pr.overtime_seconds,
+          pr.early_exit_seconds,
+          pr.worked_minutes,
+          pr.expected_minutes,
+          pr.balance_seconds,
+          pr.interval_excess_seconds,
+          pr.atraso_clt_minutes,
+          pr.chegada_antec_clt_minutes,
+          pr.extra_clt_minutes,
+          pr.saida_antec_clt_minutes,
+          pr.saldo_clt_minutes,
+          pr.status,
+          COALESCE(pr.occurrence_type, NULL) as occurrence_type,
+          e.name as employee_name,
+          e.department
+        FROM processed_records pr
+        JOIN employees e ON pr.employee_id = e.id
+        WHERE pr.employee_id = $1 
+          AND pr.date >= $2
+          AND pr.date <= $3
+        ORDER BY pr.date ASC
+      `,
+      [parseInt(employeeId), startDate, endDate]
+    )) as any[];
     
-    let reports: any[];
-    
-    if (useSupabase) {
-      // PostgreSQL: usar CAST para comparação de datas
-      reports = (await query(
-        `
-          SELECT 
-            pr.*,
-            e.name as employee_name,
-            e.department
-          FROM processed_records pr
-          JOIN employees e ON pr.employee_id = e.id
-          WHERE pr.employee_id = $1 
-            AND CAST(pr.date AS DATE) >= CAST($2 AS DATE) 
-            AND CAST(pr.date AS DATE) <= CAST($3 AS DATE)
-          ORDER BY pr.date ASC
-        `,
-        [parseInt(employeeId), startDate, endDate]
-      )) as any[];
-    } else {
-      // SQLite: usar SUBSTR para comparar apenas os primeiros 7 caracteres (YYYY-MM)
-      // Isso garante que apenas registros do mês correto sejam retornados
-      const monthPattern = month; // "2025-11"
-      reports = (await query(
-        `
-          SELECT 
-            pr.*,
-            e.name as employee_name,
-            e.department
-          FROM processed_records pr
-          JOIN employees e ON pr.employee_id = e.id
-          WHERE pr.employee_id = $1 
-            AND SUBSTR(pr.date, 1, 7) = $2
-          ORDER BY pr.date ASC
-        `,
-        [parseInt(employeeId), monthPattern]
-      )) as any[];
-    }
+    logger.info(`[PDF API] Query retornou ${reports.length} registros para employeeId=${employeeId}, month=${month}, startDate=${startDate}, endDate=${endDate}`);
     
     // Filtrar os resultados para garantir que são do mês correto
     // (proteção adicional caso a query retorne dados incorretos)
     const monthPrefix = month; // "2025-11"
     const reportsBeforeFilter = reports.length;
     reports = reports.filter(report => {
-      const reportDate = String(report.date || '').substring(0, 7); // "2025-11" ou "2025-12"
-      const matches = reportDate === monthPrefix;
+      // Normalizar data - Postgres pode retornar Date object ou string
+      let dateStr = report.date;
+      if (dateStr instanceof Date) {
+        dateStr = format(dateStr, 'yyyy-MM-dd');
+      } else if (typeof dateStr === 'string') {
+        dateStr = dateStr.substring(0, 10); // Pega apenas yyyy-MM-dd
+      } else {
+        dateStr = String(dateStr).substring(0, 10);
+      }
+      const reportMonth = dateStr.substring(0, 7); // "2025-11"
+      const matches = reportMonth === monthPrefix;
       if (!matches) {
+        logger.warn(`[PDF API] Registro com data ${dateStr} não corresponde ao mês ${monthPrefix}`);
       }
       return matches;
     });
     
     if (reports.length === 0) {
-      logger.warn(`[PDF API] Nenhum registro encontrado para employeeId=${employeeId}, month=${month}`);
+      logger.warn(`[PDF API] Nenhum registro encontrado após filtro para employeeId=${employeeId}, month=${month}. Total antes do filtro: ${reportsBeforeFilter}`);
+    } else {
+      logger.info(`[PDF API] ${reports.length} registros após filtro para employeeId=${employeeId}, month=${month}`);
     }
     
     // Gerar todos os dias do mês
@@ -110,27 +125,37 @@ export async function GET(request: NextRequest) {
       let normalizedDate: string | null = null;
       
       if (report.date) {
-        const dateStr = String(report.date);
-        // Tentar extrair data no formato yyyy-MM-dd
-        if (dateStr.length >= 10) {
-          normalizedDate = dateStr.substring(0, 10);
+        // Postgres pode retornar Date object
+        if (report.date instanceof Date) {
+          normalizedDate = format(report.date, 'yyyy-MM-dd');
         } else {
-          // Tentar parsear a data se estiver em outro formato
-          try {
-            const parsedDate = new Date(dateStr);
-            if (!isNaN(parsedDate.getTime())) {
-              normalizedDate = format(parsedDate, 'yyyy-MM-dd');
+          const dateStr = String(report.date);
+          // Tentar extrair data no formato yyyy-MM-dd
+          if (dateStr.length >= 10) {
+            normalizedDate = dateStr.substring(0, 10);
+          } else {
+            // Tentar parsear a data se estiver em outro formato
+            try {
+              const parsedDate = new Date(dateStr);
+              if (!isNaN(parsedDate.getTime())) {
+                normalizedDate = format(parsedDate, 'yyyy-MM-dd');
+              }
+            } catch (e) {
+              logger.warn(`[PDF API] Erro ao normalizar data: ${dateStr}`, e);
             }
-          } catch (e) {
-            logger.warn(`[PDF API] Erro ao normalizar data: ${dateStr}`, e);
           }
         }
       }
       
       if (normalizedDate) {
         reportsByDate.set(normalizedDate, report);
+        logger.debug(`[PDF API] Registro mapeado para data: ${normalizedDate}`);
+      } else {
+        logger.warn(`[PDF API] Não foi possível normalizar data do registro:`, report.date);
       }
     });
+    
+    logger.info(`[PDF API] Total de registros mapeados por data: ${reportsByDate.size}`);
     
     
     // Função auxiliar para formatar horário
@@ -217,6 +242,7 @@ export async function GET(request: NextRequest) {
           dayOfWeek: format(day, 'EEE', { locale: ptBR }),
           isSunday,
           status: report?.status || 'OK',
+          occurrenceType: report?.occurrence_type || null,
           morningEntry: formatTime(report?.morning_entry, 'morning_entry'),
           lunchExit: formatTime(report?.lunch_exit, 'lunch_exit'),
           afternoonEntry: formatTime(report?.afternoon_entry, 'afternoon_entry'),

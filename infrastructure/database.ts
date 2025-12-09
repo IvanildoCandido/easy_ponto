@@ -8,8 +8,10 @@ import path from 'path';
 import fs from 'fs';
 import { logger } from './logger';
 
-const isProduction = process.env.NODE_ENV === 'production';
-const useSupabase = isProduction && process.env.SUPABASE_DB_URL;
+// Detectar se deve usar Supabase baseado na existência da variável SUPABASE_DB_URL
+// Se a variável estiver definida, usa Supabase independente do ambiente
+// Isso permite usar Supabase em desenvolvimento local também
+const useSupabase = !!process.env.SUPABASE_DB_URL;
 
 let sqliteDb: any = null;
 let pgPool: any = null;
@@ -90,6 +92,9 @@ if (!useSupabase) {
       saida_antec_clt_minutes INTEGER DEFAULT 0,
       saldo_clt_minutes INTEGER DEFAULT 0,
       status TEXT DEFAULT 'OK',
+      occurrence_type TEXT,
+      occurrence_hours_minutes INTEGER,
+      occurrence_duration TEXT,
       FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
       UNIQUE(employee_id, date)
     );
@@ -110,6 +115,9 @@ if (!useSupabase) {
     { name: 'extra_clt_minutes', type: 'INTEGER DEFAULT 0' },
     { name: 'saida_antec_clt_minutes', type: 'INTEGER DEFAULT 0' },
     { name: 'saldo_clt_minutes', type: 'INTEGER DEFAULT 0' },
+    { name: 'occurrence_type', type: 'TEXT' },
+    { name: 'occurrence_hours_minutes', type: 'INTEGER' },
+    { name: 'occurrence_duration', type: 'TEXT' },
   ];
   
   for (const col of newColumns) {

@@ -102,6 +102,9 @@ export async function GET(request: NextRequest) {
         saida_antec_clt_minutes: report.saida_antec_clt_minutes || 0,
         saldo_clt_minutes: report.saldo_clt_minutes || 0,
         status: report.status || 'OK', // Incluir status (OK ou INCONSISTENTE)
+        occurrence_type: report.occurrence_type || null, // Tipo de ocorrência
+        occurrence_hours_minutes: report.occurrence_hours_minutes || null, // Horas da ocorrência em minutos
+        occurrence_duration: report.occurrence_duration || null, // Duração (COMPLETA, MEIO_PERIODO, ou null)
       };
     });
     

@@ -90,5 +90,45 @@ BEGIN
     END IF;
 END $$;
 
+-- Migração: campo occurrence_type (idempotente)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'processed_records' 
+          AND column_name = 'occurrence_type'
+    ) THEN
+        ALTER TABLE processed_records 
+        ADD COLUMN occurrence_type TEXT 
+        CHECK (occurrence_type IN ('FERIADO', 'FALTA', 'FOLGA', 'ATESTADO', 'DECLARACAO'));
+    END IF;
+END $$;
+
+-- Migração: campos occurrence_hours_minutes e occurrence_duration (idempotente)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'processed_records' 
+          AND column_name = 'occurrence_hours_minutes'
+    ) THEN
+        ALTER TABLE processed_records 
+        ADD COLUMN occurrence_hours_minutes INTEGER;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'processed_records' 
+          AND column_name = 'occurrence_duration'
+    ) THEN
+        ALTER TABLE processed_records 
+        ADD COLUMN occurrence_duration TEXT 
+        CHECK (occurrence_duration IN ('COMPLETA', 'MEIO_PERIODO') OR occurrence_duration IS NULL);
+    END IF;
+END $$;
+
 
 

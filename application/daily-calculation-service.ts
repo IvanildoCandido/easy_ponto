@@ -19,9 +19,8 @@ import { logger } from '../infrastructure/logger';
  * @param date - Data no formato 'yyyy-MM-dd'
  */
 export async function calculateDailyRecords(date: string) {
-  // Para SQLite, usar LIKE; para Postgres, usar DATE()
-  const isProduction = process.env.NODE_ENV === 'production';
-  const useSupabase = isProduction && process.env.SUPABASE_DB_URL;
+  // Detectar Supabase baseado na existência de SUPABASE_DB_URL
+  const useSupabase = !!process.env.SUPABASE_DB_URL;
   
   // Para Postgres, converter datetime de volta para timezone local ao recuperar
   const records = await query<any>(
@@ -211,6 +210,48 @@ export async function calculateDailyRecords(date: string) {
     // Calcular usando o novo modelo: Saldo = HorasTrabalhadas - HorasPrevistas
     const summary = computeDaySummaryV2(punchTimes, scheduledTimes, date);
     
+    // Verificar se já existe um registro com ocorrência para preservar os dados
+    const existingRecord = await queryOne<{
+      occurrence_type: string | null;
+      occurrence_hours_minutes: number | null;
+      occurrence_duration: string | null;
+    }>(
+      `SELECT occurrence_type, occurrence_hours_minutes, occurrence_duration 
+       FROM processed_records 
+       WHERE employee_id = $1 AND date = $2`,
+      [empId, date]
+    );
+    
+    // Ajustar cálculo se houver ocorrência
+    // IMPORTANTE: summary.expectedMinutes já vem do cálculo baseado no schedule (original)
+    let adjustedExpectedMinutes = summary.expectedMinutes;
+    let adjustedBalanceSeconds = summary.balanceSeconds;
+    let adjustedWorkedMinutes = summary.workedMinutes;
+    
+    if (existingRecord?.occurrence_type) {
+      const occurrenceType = existingRecord.occurrence_type;
+      const occurrenceDuration = existingRecord.occurrence_duration;
+      const occurrenceHoursMinutes = existingRecord.occurrence_hours_minutes;
+      
+      logger.info(`[calculateDailyRecords] Ajustando cálculo para ocorrência: ${occurrenceType}, duration: ${occurrenceDuration}, hours: ${occurrenceHoursMinutes}, expected_original: ${summary.expectedMinutes}`);
+      
+      if (occurrenceDuration === 'COMPLETA') {
+        // Folga/Falta completa: não espera trabalhar, então expected = 0 e saldo = 0 (não deve ficar devendo)
+        adjustedExpectedMinutes = 0;
+        adjustedBalanceSeconds = 0; // Saldo zero para folga completa (não deve ficar devendo as horas)
+      } else if (occurrenceDuration === 'MEIO_PERIODO') {
+        // Meio período: espera metade das horas originais (summary.expectedMinutes já é o valor original do schedule)
+        adjustedExpectedMinutes = Math.floor(summary.expectedMinutes / 2);
+        adjustedBalanceSeconds = (adjustedWorkedMinutes - adjustedExpectedMinutes) * 60;
+      } else if (occurrenceHoursMinutes !== null && occurrenceHoursMinutes !== undefined) {
+        // Horas específicas: usar o valor definido
+        adjustedExpectedMinutes = occurrenceHoursMinutes;
+        adjustedBalanceSeconds = (adjustedWorkedMinutes - adjustedExpectedMinutes) * 60;
+      }
+      // Se não tiver duration nem hours específicas, mantém o cálculo normal
+      
+      logger.info(`[calculateDailyRecords] Valores ajustados: expected=${adjustedExpectedMinutes}, balance=${adjustedBalanceSeconds}, worked=${adjustedWorkedMinutes}`);
+    }
     
     // Preparar expected_start e expected_end para compatibilidade
     const workDateStr = format(workDate, 'yyyy-MM-dd');
@@ -231,6 +272,11 @@ export async function calculateDailyRecords(date: string) {
       }
     }
     
+    // Preservar campos de ocorrência se existirem
+    const occurrenceType = existingRecord?.occurrence_type || null;
+    const occurrenceHoursMinutes = existingRecord?.occurrence_hours_minutes || null;
+    const occurrenceDuration = existingRecord?.occurrence_duration || null;
+    
     // Salvar no banco
     // O novo modelo usa segundos diretamente, mas o banco ainda armazena alguns campos em segundos
     await query(
@@ -239,8 +285,9 @@ export async function calculateDailyRecords(date: string) {
           (employee_id, date, first_entry, last_exit, morning_entry, lunch_exit, afternoon_entry, final_exit,
            expected_start, expected_end, delay_seconds, early_arrival_seconds, overtime_seconds, 
            early_exit_seconds, worked_minutes, expected_minutes, balance_seconds, interval_excess_seconds,
-           atraso_clt_minutes, chegada_antec_clt_minutes, extra_clt_minutes, saida_antec_clt_minutes, saldo_clt_minutes, status)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+           atraso_clt_minutes, chegada_antec_clt_minutes, extra_clt_minutes, saida_antec_clt_minutes, saldo_clt_minutes, status,
+           occurrence_type, occurrence_hours_minutes, occurrence_duration)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
         ON CONFLICT (employee_id, date) DO UPDATE SET
           first_entry = EXCLUDED.first_entry,
           last_exit = EXCLUDED.last_exit,
@@ -263,7 +310,10 @@ export async function calculateDailyRecords(date: string) {
           extra_clt_minutes = EXCLUDED.extra_clt_minutes,
           saida_antec_clt_minutes = EXCLUDED.saida_antec_clt_minutes,
           saldo_clt_minutes = EXCLUDED.saldo_clt_minutes,
-          status = EXCLUDED.status
+          status = EXCLUDED.status,
+          occurrence_type = COALESCE(processed_records.occurrence_type, EXCLUDED.occurrence_type),
+          occurrence_hours_minutes = COALESCE(processed_records.occurrence_hours_minutes, EXCLUDED.occurrence_hours_minutes),
+          occurrence_duration = COALESCE(processed_records.occurrence_duration, EXCLUDED.occurrence_duration)
       `,
       [
         empId,
@@ -280,9 +330,9 @@ export async function calculateDailyRecords(date: string) {
         summary.earlyArrivalMinutes * 60, // Indicador informativo (em segundos)
         summary.overtimeMinutes * 60, // Indicador informativo (em segundos)
         summary.earlyExitMinutes * 60, // Indicador informativo (em segundos)
-        summary.workedMinutes, // Minutos trabalhados (floor de segundos/60) - VALOR CORRETO
-        summary.expectedMinutes, // Minutos previstos (floor de segundos/60)
-        summary.balanceSeconds, // Saldo em segundos (trabalhadas - previstas)
+        adjustedWorkedMinutes, // Minutos trabalhados (ajustado se houver ocorrência)
+        adjustedExpectedMinutes, // Minutos previstos (ajustado se houver ocorrência)
+        adjustedBalanceSeconds, // Saldo em segundos (ajustado se houver ocorrência)
         summary.intervalExcessSeconds, // Excesso de intervalo (em segundos, indicador separado)
         summary.atrasoCltMinutes, // Atraso CLT (após tolerância)
         summary.chegadaAntecCltMinutes, // Chegada antecipada CLT (após tolerância)
@@ -290,6 +340,9 @@ export async function calculateDailyRecords(date: string) {
         summary.saidaAntecCltMinutes, // Saída antecipada CLT (após tolerância)
         summary.saldoCltMinutes, // SALDO_CLT (para fins de pagamento/banco de horas legal)
         summary.status,
+        occurrenceType,
+        occurrenceHoursMinutes,
+        occurrenceDuration,
       ]
     );
   }
