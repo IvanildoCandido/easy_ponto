@@ -88,3 +88,4 @@ console.log('   8. Cole no .env.local como: SUPABASE_DB_URL=[connection_string]'
 console.log('\n🧪 Para testar a conexão, execute:');
 console.log('   node scripts/test-supabase-connection.js\n');
 
+
