@@ -105,6 +105,10 @@ export async function GET(request: NextRequest) {
         occurrence_type: report.occurrence_type || null, // Tipo de ocorrência
         occurrence_hours_minutes: report.occurrence_hours_minutes || null, // Horas da ocorrência em minutos
         occurrence_duration: report.occurrence_duration || null, // Duração (COMPLETA, MEIO_PERIODO, ou null)
+        occurrence_morning_entry: report.occurrence_morning_entry || false, // Ocorrência na entrada da manhã
+        occurrence_lunch_exit: report.occurrence_lunch_exit || false, // Ocorrência na saída do almoço
+        occurrence_afternoon_entry: report.occurrence_afternoon_entry || false, // Ocorrência na entrada da tarde
+        occurrence_final_exit: report.occurrence_final_exit || false, // Ocorrência na saída final
       };
     });
     

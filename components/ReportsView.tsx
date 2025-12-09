@@ -42,8 +42,10 @@ interface Report {
   saldo_clt_minutes?: number; // SALDO_CLT (para fins de pagamento/banco de horas legal)
   status: 'OK' | 'INCONSISTENTE';
   occurrence_type?: 'FERIADO' | 'FALTA' | 'FOLGA' | 'ATESTADO' | 'DECLARACAO' | null;
-  occurrence_hours_minutes?: number | null;
-  occurrence_duration?: 'COMPLETA' | 'MEIO_PERIODO' | null;
+  occurrence_morning_entry?: boolean;
+  occurrence_lunch_exit?: boolean;
+  occurrence_afternoon_entry?: boolean;
+  occurrence_final_exit?: boolean;
 }
 
 export default function ReportsView() {
@@ -56,8 +58,10 @@ export default function ReportsView() {
   const [showInternalMode, setShowInternalMode] = useState(false); // false = CLT (padrão), true = Controle Interno
   const [editingReport, setEditingReport] = useState<number | null>(null); // ID do registro sendo editado
   const [editingOccurrenceType, setEditingOccurrenceType] = useState<string>('');
-  const [editingOccurrenceDuration, setEditingOccurrenceDuration] = useState<string>('');
-  const [editingOccurrenceHours, setEditingOccurrenceHours] = useState<string>('');
+  const [editingOccurrenceMorningEntry, setEditingOccurrenceMorningEntry] = useState<boolean>(false);
+  const [editingOccurrenceLunchExit, setEditingOccurrenceLunchExit] = useState<boolean>(false);
+  const [editingOccurrenceAfternoonEntry, setEditingOccurrenceAfternoonEntry] = useState<boolean>(false);
+  const [editingOccurrenceFinalExit, setEditingOccurrenceFinalExit] = useState<boolean>(false);
 
   const loadEmployees = async () => {
     try {
@@ -206,13 +210,13 @@ export default function ReportsView() {
     pdf: any,
     data: any,
     pageWidth: number,
-    pageHeight: number,
-    isFirstPage: boolean = false
+    pageHeight: number
   ) => {
     let yPos = 7; // Sempre começar do topo da página
-    const lineHeight = 4.8;
+    const lineHeight = 5.5; // Aumentada para acomodar nomes completos sem cortar
     const margin = 7;
     const headerHeight = 20;
+    const textVerticalOffset = 2.2; // Offset para centralizar texto verticalmente na célula
 
     // Cabeçalho compacto com fundo colorido
     pdf.setFillColor(41, 128, 185); // Azul elegante
@@ -233,11 +237,12 @@ export default function ReportsView() {
     pdf.setTextColor(0, 0, 0); // Preto
     yPos = headerHeight + 6;
 
-    // Tabela compacta - larguras ajustadas para caber na página A4 (210mm)
+    // Tabela expandida - larguras ajustadas para ocupar melhor a página A4 (210mm)
     // Colunas: Data, Dia, Ocorr, Entrada, Almoço, Retorno, Saída, Atraso, Extra, Saldo
-    const colWidths = [18, 8, 10, 11, 11, 11, 11, 11, 11, 12];
-    const totalTableWidth = colWidths.reduce((sum, w) => sum + w, 0); // Total: 116mm
-    const tableMargin = Math.max(5, (pageWidth - totalTableWidth) / 2); // Centralizar
+    // Aumentadas colunas de horário para acomodar nomes completos de ocorrências
+    const colWidths = [25, 12, 14, 18, 18, 18, 18, 14, 14, 16];
+    const totalTableWidth = colWidths.reduce((sum, w) => sum + w, 0); // Total: ~171mm
+    const tableMargin = Math.max(10, (pageWidth - totalTableWidth) / 2); // Centralizar com margem mínima
     const headers = ['Data', 'Dia', 'Ocorr.', 'Entrada', 'Almoço', 'Retorno', 'Saída', 'Atraso', 'Extra', 'Saldo'];
     
     // Cabeçalho da tabela com fundo
@@ -292,17 +297,13 @@ export default function ReportsView() {
       // Alternar cores das linhas (mais sutil)
       if (rowIndex % 2 === 0) {
         pdf.setFillColor(250, 250, 250);
-        pdf.rect(tableMargin, yPos - 4.5, totalTableWidth, lineHeight, 'F');
+        pdf.rect(tableMargin, yPos - textVerticalOffset, totalTableWidth, lineHeight, 'F');
       }
 
-      // Destaque para domingos e registros inconsistentes
+      // Destaque para domingos (sem background especial para ocorrências ou inconsistências)
       if (day.isSunday) {
         pdf.setFillColor(245, 245, 245);
-        pdf.rect(tableMargin, yPos - 4.5, totalTableWidth, lineHeight, 'F');
-      }
-      if (day.status === 'INCONSISTENTE') {
-        pdf.setFillColor(255, 249, 196); // Amarelo claro para inconsistente
-        pdf.rect(tableMargin, yPos - 4.5, totalTableWidth, lineHeight, 'F');
+        pdf.rect(tableMargin, yPos - textVerticalOffset, totalTableWidth, lineHeight, 'F');
       }
 
       // Montar texto da data (limpar qualquer caractere extra e garantir tamanho fixo)
@@ -320,21 +321,25 @@ export default function ReportsView() {
       }
       dayOfWeekText = dayOfWeekText.toUpperCase();
       
-      // Texto da ocorrência (abreviado para PDF)
-      const occurrenceLabelsShort: Record<string, string> = {
-        FERIADO: 'FER',
-        FALTA: 'FAL',
-        FOLGA: 'FOL',
-        ATESTADO: 'ATE',
-        DECLARACAO: 'DEC',
+      // Labels abreviadas para ocorrências
+      const occurrenceLabels: Record<string, string> = {
+        FERIADO: 'Feriado',
+        FALTA: 'Falta',
+        FOLGA: 'Folga',
+        ATESTADO: 'Atestado',
+        DECLARACAO: 'Declaração',
       };
-      let occurrenceText = '-';
-      if (day.occurrenceType) {
-        const occType = String(day.occurrenceType).trim().toUpperCase();
-        if (occurrenceLabelsShort[occType]) {
-          occurrenceText = occurrenceLabelsShort[occType];
-        }
-      }
+      
+      // Verificar se tem ocorrência
+      const hasOccurrence = day.occurrenceType ? true : false;
+      const occType = day.occurrenceType ? String(day.occurrenceType).trim().toUpperCase() : '';
+      const occLabel = occType && occurrenceLabels[occType] ? occurrenceLabels[occType] : '';
+      
+      // Verificar quais batidas têm ocorrência (pode vir como boolean ou número do banco)
+      const hasOccMorning = day.occurrenceMorningEntry === true || day.occurrenceMorningEntry === 1;
+      const hasOccLunch = day.occurrenceLunchExit === true || day.occurrenceLunchExit === 1;
+      const hasOccAfternoon = day.occurrenceAfternoonEntry === true || day.occurrenceAfternoonEntry === 1;
+      const hasOccFinal = day.occurrenceFinalExit === true || day.occurrenceFinalExit === 1;
 
       // Garantir que fonte e cor estão corretas antes de renderizar linha
       pdf.setFont('helvetica', 'normal');
@@ -342,41 +347,73 @@ export default function ReportsView() {
       pdf.setTextColor(0, 0, 0);
       
       xPos = tableMargin;
+      // Calcular posição Y centralizada para o texto (centralizar verticalmente na célula)
+      const textY = yPos - textVerticalOffset + (lineHeight / 2) - 1;
       
       // Coluna 0: Data - garantir que não ultrapasse
       const finalDateText = String(dateText).substring(0, 12); // Limitar a 12 caracteres
-      pdf.text(finalDateText, xPos + 0.5, yPos);
+      pdf.text(finalDateText, xPos + 0.5, textY);
       xPos += colWidths[0];
       
       // Coluna 1: Dia - garantir que seja exatamente 3 caracteres
       const finalDayText = String(dayOfWeekText).substring(0, 3);
-      pdf.text(finalDayText, xPos + 0.5, yPos);
+      pdf.text(finalDayText, xPos + 0.5, textY);
       xPos += colWidths[1];
       
-      // Coluna 2: Ocorrência
-      pdf.setTextColor(0, 0, 0); // Sempre começar preto
-      if (occurrenceText && occurrenceText !== '-') {
-        pdf.setTextColor(52, 73, 94); // Cinza escuro apenas se tiver ocorrência válida
-      }
-      pdf.text(String(occurrenceText || '-'), xPos + 0.5, yPos);
+      // Coluna 2: Ocorrência - mostrar "SIM" se houver ocorrência
+      pdf.setTextColor(0, 0, 0);
+      const occurrenceText = hasOccurrence ? 'SIM' : '-';
+      pdf.text(occurrenceText, xPos + 0.5, textY);
       xPos += colWidths[2];
-      pdf.setTextColor(0, 0, 0); // Resetar cor sempre
+      pdf.setTextColor(0, 0, 0);
       
-      // Coluna 3: Entrada
-      pdf.text(String(day.morningEntry || '-'), xPos + 0.5, yPos);
+      // Coluna 3: Entrada - mostrar ocorrência se marcada, senão horário
+      if (hasOccMorning && occLabel) {
+        pdf.setTextColor(52, 73, 94); // Cinza escuro para ocorrência
+        pdf.text(occLabel, xPos + 0.5, textY);
+      } else {
+        pdf.setTextColor(0, 0, 0);
+        const entryText = day.morningEntry && day.morningEntry !== '-' ? day.morningEntry : '-';
+        pdf.text(String(entryText), xPos + 0.5, textY);
+      }
       xPos += colWidths[3];
+      pdf.setTextColor(0, 0, 0);
       
-      // Coluna 4: Almoço
-      pdf.text(String(day.lunchExit || '-'), xPos + 0.5, yPos);
+      // Coluna 4: Almoço - mostrar ocorrência se marcada, senão horário
+      if (hasOccLunch && occLabel) {
+        pdf.setTextColor(52, 73, 94);
+        pdf.text(occLabel, xPos + 0.5, textY);
+      } else {
+        pdf.setTextColor(0, 0, 0);
+        const lunchText = day.lunchExit && day.lunchExit !== '-' ? day.lunchExit : '-';
+        pdf.text(String(lunchText), xPos + 0.5, textY);
+      }
       xPos += colWidths[4];
+      pdf.setTextColor(0, 0, 0);
       
-      // Coluna 5: Retorno
-      pdf.text(String(day.afternoonEntry || '-'), xPos + 0.5, yPos);
+      // Coluna 5: Retorno - mostrar ocorrência se marcada, senão horário
+      if (hasOccAfternoon && occLabel) {
+        pdf.setTextColor(52, 73, 94);
+        pdf.text(occLabel, xPos + 0.5, textY);
+      } else {
+        pdf.setTextColor(0, 0, 0);
+        const afternoonText = day.afternoonEntry && day.afternoonEntry !== '-' ? day.afternoonEntry : '-';
+        pdf.text(String(afternoonText), xPos + 0.5, textY);
+      }
       xPos += colWidths[5];
+      pdf.setTextColor(0, 0, 0);
       
-      // Coluna 6: Saída
-      pdf.text(String(day.finalExit || '-'), xPos + 0.5, yPos);
+      // Coluna 6: Saída - mostrar ocorrência se marcada, senão horário
+      if (hasOccFinal && occLabel) {
+        pdf.setTextColor(52, 73, 94);
+        pdf.text(occLabel, xPos + 0.5, textY);
+      } else {
+        pdf.setTextColor(0, 0, 0);
+        const exitText = day.finalExit && day.finalExit !== '-' ? day.finalExit : '-';
+        pdf.text(String(exitText), xPos + 0.5, textY);
+      }
       xPos += colWidths[6];
+      pdf.setTextColor(0, 0, 0);
       
       // Coluna 7: Atraso
       pdf.setTextColor(0, 0, 0);
@@ -384,7 +421,7 @@ export default function ReportsView() {
       if (day.atrasoClt > 0) {
         pdf.setTextColor(231, 76, 60);
       }
-      pdf.text(String(atrasoText), xPos + 0.5, yPos);
+      pdf.text(String(atrasoText), xPos + 0.5, textY);
       xPos += colWidths[7];
       pdf.setTextColor(0, 0, 0);
       
@@ -393,7 +430,7 @@ export default function ReportsView() {
       if (day.extraClt > 0) {
         pdf.setTextColor(52, 152, 219);
       }
-      pdf.text(String(extraText), xPos + 0.5, yPos);
+      pdf.text(String(extraText), xPos + 0.5, textY);
       xPos += colWidths[8];
       pdf.setTextColor(0, 0, 0);
       
@@ -408,7 +445,7 @@ export default function ReportsView() {
       } else {
         pdf.setTextColor(127, 140, 141);
       }
-      pdf.text(String(saldoText), xPos + 0.5, yPos);
+      pdf.text(String(saldoText), xPos + 0.5, textY);
       pdf.setTextColor(0, 0, 0);
 
       yPos += lineHeight;
@@ -505,7 +542,7 @@ export default function ReportsView() {
       const pageHeight = pdf.internal.pageSize.getHeight();
 
       // Renderizar página do funcionário
-      renderEmployeePage(pdf, data, pageWidth, pageHeight, true);
+      renderEmployeePage(pdf, data, pageWidth, pageHeight);
 
       // Salvar PDF
       const fileName = `Folha_Ponto_${data.employee.name.replace(/\s+/g, '_')}_${data.monthYear}.pdf`;
@@ -518,8 +555,10 @@ export default function ReportsView() {
   const updateOccurrenceType = async (
     reportId: number, 
     occurrenceType: string | null,
-    occurrenceHoursMinutes?: number | null,
-    occurrenceDuration?: 'COMPLETA' | 'MEIO_PERIODO' | null
+    occurrenceMorningEntry?: boolean,
+    occurrenceLunchExit?: boolean,
+    occurrenceAfternoonEntry?: boolean,
+    occurrenceFinalExit?: boolean
   ) => {
     try {
       const response = await fetch('/api/reports/update-occurrence', {
@@ -530,8 +569,12 @@ export default function ReportsView() {
         body: JSON.stringify({
           id: reportId,
           occurrence_type: occurrenceType || null,
-          occurrence_hours_minutes: occurrenceHoursMinutes !== undefined ? occurrenceHoursMinutes : null,
-          occurrence_duration: occurrenceDuration || null,
+          occurrence_hours_minutes: null,
+          occurrence_duration: null,
+          occurrence_morning_entry: occurrenceMorningEntry || false,
+          occurrence_lunch_exit: occurrenceLunchExit || false,
+          occurrence_afternoon_entry: occurrenceAfternoonEntry || false,
+          occurrence_final_exit: occurrenceFinalExit || false,
         }),
       });
 
@@ -549,8 +592,10 @@ export default function ReportsView() {
           r.id === reportId ? { 
             ...r, 
             occurrence_type: result.data.occurrence_type,
-            occurrence_hours_minutes: result.data.occurrence_hours_minutes,
-            occurrence_duration: result.data.occurrence_duration,
+            occurrence_morning_entry: result.data.occurrence_morning_entry,
+            occurrence_lunch_exit: result.data.occurrence_lunch_exit,
+            occurrence_afternoon_entry: result.data.occurrence_afternoon_entry,
+            occurrence_final_exit: result.data.occurrence_final_exit,
           } : r
         )
       );
@@ -604,7 +649,7 @@ export default function ReportsView() {
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       
-      let isFirstPage = true;
+      let isFirstEmployee = true;
       let employeesWithData = 0;
       
       // Processar cada funcionário
@@ -623,14 +668,14 @@ export default function ReportsView() {
             continue;
           }
           
-          // Se não for a primeira página, adicionar nova página
-          if (!isFirstPage) {
+          // Se não for o primeiro funcionário, adicionar nova página
+          if (!isFirstEmployee) {
             pdf.addPage();
           }
           
           // Renderizar página do funcionário
-          renderEmployeePage(pdf, data, pageWidth, pageHeight, isFirstPage);
-          isFirstPage = false;
+          renderEmployeePage(pdf, data, pageWidth, pageHeight);
+          isFirstEmployee = false;
           employeesWithData++;
         } catch (error) {
           // Erro ao processar funcionário - continua com os próximos
@@ -845,7 +890,7 @@ export default function ReportsView() {
                 const balance = workedMinutes - expectedMinutes;
                 const isInconsistent = (report.status || 'OK') === 'INCONSISTENTE';
                 return (
-                  <tr key={report.id} className={`hover:bg-primary-50/30 transition-colors ${isInconsistent ? 'bg-accent-50' : ''}`}>
+                  <tr key={report.id} className="hover:bg-primary-50/30 transition-colors">
                     <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
                       {formatDate(report.date)}
                       {isInconsistent && (
@@ -867,8 +912,10 @@ export default function ReportsView() {
                           e.stopPropagation();
                           setEditingReport(report.id);
                           setEditingOccurrenceType(report.occurrence_type || '');
-                          setEditingOccurrenceDuration(report.occurrence_duration || '');
-                          setEditingOccurrenceHours(report.occurrence_hours_minutes?.toString() || '');
+                          setEditingOccurrenceMorningEntry(report.occurrence_morning_entry || false);
+                          setEditingOccurrenceLunchExit(report.occurrence_lunch_exit || false);
+                          setEditingOccurrenceAfternoonEntry(report.occurrence_afternoon_entry || false);
+                          setEditingOccurrenceFinalExit(report.occurrence_final_exit || false);
                         }}
                         className="text-primary-600 hover:text-primary-800 transition-colors p-1 rounded hover:bg-primary-50"
                         title="Editar ocorrência"
@@ -902,17 +949,41 @@ export default function ReportsView() {
                       </>
                     ) : (
                       <>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
-                          {formatTime(report.morning_entry)}
+                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                          {report.occurrence_morning_entry && report.occurrence_type ? (
+                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                              {getOccurrenceTypeLabel(report.occurrence_type)}
+                            </span>
+                          ) : (
+                            <span className="text-neutral-900">{formatTime(report.morning_entry)}</span>
+                          )}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
-                          {formatTime(report.lunch_exit)}
+                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                          {report.occurrence_lunch_exit && report.occurrence_type ? (
+                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                              {getOccurrenceTypeLabel(report.occurrence_type)}
+                            </span>
+                          ) : (
+                            <span className="text-neutral-900">{formatTime(report.lunch_exit)}</span>
+                          )}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
-                          {formatTime(report.afternoon_entry)}
+                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                          {report.occurrence_afternoon_entry && report.occurrence_type ? (
+                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                              {getOccurrenceTypeLabel(report.occurrence_type)}
+                            </span>
+                          ) : (
+                            <span className="text-neutral-900">{formatTime(report.afternoon_entry)}</span>
+                          )}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
-                          {formatTime(report.final_exit)}
+                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                          {report.occurrence_final_exit && report.occurrence_type ? (
+                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                              {getOccurrenceTypeLabel(report.occurrence_type)}
+                            </span>
+                          ) : (
+                            <span className="text-neutral-900">{formatTime(report.final_exit)}</span>
+                          )}
                         </td>
                         <td className="px-3 py-3 whitespace-nowrap text-xs">
                           {report.atraso_clt_minutes && report.atraso_clt_minutes > 0 ? (
@@ -1027,8 +1098,10 @@ export default function ReportsView() {
               onClick={() => {
                 setEditingReport(null);
                 setEditingOccurrenceType('');
-                setEditingOccurrenceDuration('');
-                setEditingOccurrenceHours('');
+                setEditingOccurrenceMorningEntry(false);
+                setEditingOccurrenceLunchExit(false);
+                setEditingOccurrenceAfternoonEntry(false);
+                setEditingOccurrenceFinalExit(false);
               }}
             />
             
@@ -1046,8 +1119,10 @@ export default function ReportsView() {
                   onClick={() => {
                     setEditingReport(null);
                     setEditingOccurrenceType('');
-                    setEditingOccurrenceDuration('');
-                    setEditingOccurrenceHours('');
+                    setEditingOccurrenceMorningEntry(false);
+                    setEditingOccurrenceLunchExit(false);
+                    setEditingOccurrenceAfternoonEntry(false);
+                    setEditingOccurrenceFinalExit(false);
                   }}
                   className="text-neutral-400 hover:text-neutral-600 transition-colors"
                 >
@@ -1078,8 +1153,10 @@ export default function ReportsView() {
                     const value = e.target.value || null;
                     setEditingOccurrenceType(value || '');
                     if (!value) {
-                      setEditingOccurrenceDuration('');
-                      setEditingOccurrenceHours('');
+                      setEditingOccurrenceMorningEntry(false);
+                      setEditingOccurrenceLunchExit(false);
+                      setEditingOccurrenceAfternoonEntry(false);
+                      setEditingOccurrenceFinalExit(false);
                     }
                   }}
                   className="w-full text-sm border border-neutral-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -1094,48 +1171,53 @@ export default function ReportsView() {
                 </select>
               </div>
 
-              {/* Duração/Horas (apenas se houver tipo selecionado) */}
+              {/* Seleção de Batidas (apenas se houver tipo selecionado) */}
               {(editingOccurrenceType || report.occurrence_type) && (
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    Duração
+                  <label className="block text-sm font-medium text-neutral-700 mb-3">
+                    Aplicar ocorrência nas batidas:
                   </label>
-                  <select
-                    value={editingOccurrenceDuration || report.occurrence_duration || ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setEditingOccurrenceDuration(value);
-                      if (value === 'COMPLETA' || value === 'MEIO_PERIODO') {
-                        setEditingOccurrenceHours(''); // Limpar horas se selecionar duração pré-definida
-                      }
-                    }}
-                    className="w-full text-sm border border-neutral-300 rounded-lg px-3 py-2 mb-3 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  >
-                    <option value="">Horas específicas</option>
-                    <option value="COMPLETA">Folga Completa</option>
-                    <option value="MEIO_PERIODO">Meio Período</option>
-                  </select>
-                  
-                  {/* Campo de horas (apenas se não for COMPLETA ou MEIO_PERIODO) */}
-                  {(editingOccurrenceDuration === '' || (editingOccurrenceDuration !== 'COMPLETA' && editingOccurrenceDuration !== 'MEIO_PERIODO')) && (!report.occurrence_duration || (report.occurrence_duration !== 'COMPLETA' && report.occurrence_duration !== 'MEIO_PERIODO')) && (
-                    <div>
-                      <label className="block text-sm font-medium text-neutral-700 mb-2">
-                        Horas (em minutos)
-                      </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="flex items-center space-x-2 cursor-pointer">
                       <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={editingOccurrenceHours || report.occurrence_hours_minutes || ''}
-                        onChange={(e) => setEditingOccurrenceHours(e.target.value)}
-                        placeholder="Ex: 240 (4 horas)"
-                        className="w-full text-sm border border-neutral-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        type="checkbox"
+                        checked={editingOccurrenceMorningEntry || report.occurrence_morning_entry || false}
+                        onChange={(e) => setEditingOccurrenceMorningEntry(e.target.checked)}
+                        className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
                       />
-                      <p className="mt-1 text-xs text-neutral-500">
-                        Digite a quantidade de minutos que devem ser considerados
-                      </p>
-                    </div>
-                  )}
+                      <span className="text-sm text-neutral-700">Entrada Manhã</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editingOccurrenceLunchExit || report.occurrence_lunch_exit || false}
+                        onChange={(e) => setEditingOccurrenceLunchExit(e.target.checked)}
+                        className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
+                      />
+                      <span className="text-sm text-neutral-700">Saída Almoço</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editingOccurrenceAfternoonEntry || report.occurrence_afternoon_entry || false}
+                        onChange={(e) => setEditingOccurrenceAfternoonEntry(e.target.checked)}
+                        className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
+                      />
+                      <span className="text-sm text-neutral-700">Entrada Tarde</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editingOccurrenceFinalExit || report.occurrence_final_exit || false}
+                        onChange={(e) => setEditingOccurrenceFinalExit(e.target.checked)}
+                        className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
+                      />
+                      <span className="text-sm text-neutral-700">Saída Final</span>
+                    </label>
+                  </div>
+                  <p className="mt-2 text-xs text-neutral-500">
+                    Marque as batidas onde a ocorrência deve aparecer
+                  </p>
                 </div>
               )}
 
@@ -1145,8 +1227,10 @@ export default function ReportsView() {
                   onClick={() => {
                     setEditingReport(null);
                     setEditingOccurrenceType('');
-                    setEditingOccurrenceDuration('');
-                    setEditingOccurrenceHours('');
+                    setEditingOccurrenceMorningEntry(false);
+                    setEditingOccurrenceLunchExit(false);
+                    setEditingOccurrenceAfternoonEntry(false);
+                    setEditingOccurrenceFinalExit(false);
                   }}
                   className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white border border-neutral-300 rounded-lg hover:bg-neutral-50 transition-colors"
                 >
@@ -1155,20 +1239,24 @@ export default function ReportsView() {
                 <button
                   onClick={() => {
                     const finalType = editingOccurrenceType || report.occurrence_type || null;
-                    const finalDuration = editingOccurrenceDuration || report.occurrence_duration || null;
-                    const finalHours = editingOccurrenceHours 
-                      ? parseInt(editingOccurrenceHours, 10) 
-                      : (report.occurrence_hours_minutes !== undefined ? report.occurrence_hours_minutes : null);
+                    const finalMorningEntry = editingOccurrenceMorningEntry !== undefined ? editingOccurrenceMorningEntry : (report.occurrence_morning_entry || false);
+                    const finalLunchExit = editingOccurrenceLunchExit !== undefined ? editingOccurrenceLunchExit : (report.occurrence_lunch_exit || false);
+                    const finalAfternoonEntry = editingOccurrenceAfternoonEntry !== undefined ? editingOccurrenceAfternoonEntry : (report.occurrence_afternoon_entry || false);
+                    const finalFinalExit = editingOccurrenceFinalExit !== undefined ? editingOccurrenceFinalExit : (report.occurrence_final_exit || false);
                     
                     updateOccurrenceType(
                       report.id, 
                       finalType,
-                      finalHours,
-                      finalDuration as 'COMPLETA' | 'MEIO_PERIODO' | null
+                      finalMorningEntry,
+                      finalLunchExit,
+                      finalAfternoonEntry,
+                      finalFinalExit
                     );
                     setEditingOccurrenceType('');
-                    setEditingOccurrenceDuration('');
-                    setEditingOccurrenceHours('');
+                    setEditingOccurrenceMorningEntry(false);
+                    setEditingOccurrenceLunchExit(false);
+                    setEditingOccurrenceAfternoonEntry(false);
+                    setEditingOccurrenceFinalExit(false);
                   }}
                   className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
                 >

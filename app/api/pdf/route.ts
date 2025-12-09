@@ -69,6 +69,10 @@ export async function GET(request: NextRequest) {
           pr.saldo_clt_minutes,
           pr.status,
           COALESCE(pr.occurrence_type, NULL) as occurrence_type,
+          COALESCE(pr.occurrence_morning_entry, false) as occurrence_morning_entry,
+          COALESCE(pr.occurrence_lunch_exit, false) as occurrence_lunch_exit,
+          COALESCE(pr.occurrence_afternoon_entry, false) as occurrence_afternoon_entry,
+          COALESCE(pr.occurrence_final_exit, false) as occurrence_final_exit,
           e.name as employee_name,
           e.department
         FROM processed_records pr
@@ -81,35 +85,20 @@ export async function GET(request: NextRequest) {
       [parseInt(employeeId), startDate, endDate]
     )) as any[];
     
-    logger.info(`[PDF API] Query retornou ${reports.length} registros para employeeId=${employeeId}, month=${month}, startDate=${startDate}, endDate=${endDate}`);
-    
     // Filtrar os resultados para garantir que são do mês correto
-    // (proteção adicional caso a query retorne dados incorretos)
-    const monthPrefix = month; // "2025-11"
-    const reportsBeforeFilter = reports.length;
+    const monthPrefix = month;
     reports = reports.filter(report => {
-      // Normalizar data - Postgres pode retornar Date object ou string
       let dateStr = report.date;
       if (dateStr instanceof Date) {
         dateStr = format(dateStr, 'yyyy-MM-dd');
       } else if (typeof dateStr === 'string') {
-        dateStr = dateStr.substring(0, 10); // Pega apenas yyyy-MM-dd
+        dateStr = dateStr.substring(0, 10);
       } else {
         dateStr = String(dateStr).substring(0, 10);
       }
-      const reportMonth = dateStr.substring(0, 7); // "2025-11"
-      const matches = reportMonth === monthPrefix;
-      if (!matches) {
-        logger.warn(`[PDF API] Registro com data ${dateStr} não corresponde ao mês ${monthPrefix}`);
-      }
-      return matches;
+      const reportMonth = dateStr.substring(0, 7);
+      return reportMonth === monthPrefix;
     });
-    
-    if (reports.length === 0) {
-      logger.warn(`[PDF API] Nenhum registro encontrado após filtro para employeeId=${employeeId}, month=${month}. Total antes do filtro: ${reportsBeforeFilter}`);
-    } else {
-      logger.info(`[PDF API] ${reports.length} registros após filtro para employeeId=${employeeId}, month=${month}`);
-    }
     
     // Gerar todos os dias do mês
     const allDays = eachDayOfInterval({
@@ -134,14 +123,14 @@ export async function GET(request: NextRequest) {
           if (dateStr.length >= 10) {
             normalizedDate = dateStr.substring(0, 10);
           } else {
-            // Tentar parsear a data se estiver em outro formato
+              // Tentar parsear a data se estiver em outro formato
             try {
               const parsedDate = new Date(dateStr);
               if (!isNaN(parsedDate.getTime())) {
                 normalizedDate = format(parsedDate, 'yyyy-MM-dd');
               }
             } catch (e) {
-              logger.warn(`[PDF API] Erro ao normalizar data: ${dateStr}`, e);
+              // Ignorar erro de parsing
             }
           }
         }
@@ -149,17 +138,11 @@ export async function GET(request: NextRequest) {
       
       if (normalizedDate) {
         reportsByDate.set(normalizedDate, report);
-        logger.debug(`[PDF API] Registro mapeado para data: ${normalizedDate}`);
-      } else {
-        logger.warn(`[PDF API] Não foi possível normalizar data do registro:`, report.date);
       }
     });
     
-    logger.info(`[PDF API] Total de registros mapeados por data: ${reportsByDate.size}`);
-    
-    
     // Função auxiliar para formatar horário
-    const formatTime = (timeValue: string | null | undefined, fieldName?: string): string => {
+    const formatTime = (timeValue: string | null | undefined): string => {
       if (!timeValue) {
         return '-';
       }
@@ -243,10 +226,14 @@ export async function GET(request: NextRequest) {
           isSunday,
           status: report?.status || 'OK',
           occurrenceType: report?.occurrence_type || null,
-          morningEntry: formatTime(report?.morning_entry, 'morning_entry'),
-          lunchExit: formatTime(report?.lunch_exit, 'lunch_exit'),
-          afternoonEntry: formatTime(report?.afternoon_entry, 'afternoon_entry'),
-          finalExit: formatTime(report?.final_exit, 'final_exit'),
+          occurrenceMorningEntry: report?.occurrence_morning_entry === true || report?.occurrence_morning_entry === 1 || false,
+          occurrenceLunchExit: report?.occurrence_lunch_exit === true || report?.occurrence_lunch_exit === 1 || false,
+          occurrenceAfternoonEntry: report?.occurrence_afternoon_entry === true || report?.occurrence_afternoon_entry === 1 || false,
+          occurrenceFinalExit: report?.occurrence_final_exit === true || report?.occurrence_final_exit === 1 || false,
+          morningEntry: formatTime(report?.morning_entry),
+          lunchExit: formatTime(report?.lunch_exit),
+          afternoonEntry: formatTime(report?.afternoon_entry),
+          finalExit: formatTime(report?.final_exit),
           // Campos CLT (mesmos da tabela no modo CLT)
           atrasoClt: report ? (report.atraso_clt_minutes || 0) : 0,
           extraClt: report ? (report.extra_clt_minutes || 0) : 0,

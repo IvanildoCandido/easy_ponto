@@ -130,5 +130,49 @@ BEGIN
     END IF;
 END $$;
 
+-- Migração: campos occurrence por batida (idempotente)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'processed_records' 
+          AND column_name = 'occurrence_morning_entry'
+    ) THEN
+        ALTER TABLE processed_records 
+        ADD COLUMN occurrence_morning_entry BOOLEAN DEFAULT false;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'processed_records' 
+          AND column_name = 'occurrence_lunch_exit'
+    ) THEN
+        ALTER TABLE processed_records 
+        ADD COLUMN occurrence_lunch_exit BOOLEAN DEFAULT false;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'processed_records' 
+          AND column_name = 'occurrence_afternoon_entry'
+    ) THEN
+        ALTER TABLE processed_records 
+        ADD COLUMN occurrence_afternoon_entry BOOLEAN DEFAULT false;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'processed_records' 
+          AND column_name = 'occurrence_final_exit'
+    ) THEN
+        ALTER TABLE processed_records 
+        ADD COLUMN occurrence_final_exit BOOLEAN DEFAULT false;
+    END IF;
+END $$;
+
 
 

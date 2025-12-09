@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/infrastructure/database';
+import { logger } from '@/infrastructure/logger';
 import { calculateDailyRecords } from '@/application/daily-calculation-service';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +12,11 @@ export async function PATCH(request: NextRequest) {
       id, 
       occurrence_type, 
       occurrence_hours_minutes, 
-      occurrence_duration 
+      occurrence_duration,
+      occurrence_morning_entry,
+      occurrence_lunch_exit,
+      occurrence_afternoon_entry,
+      occurrence_final_exit
     } = body;
 
     if (!id) {
@@ -54,6 +59,12 @@ export async function PATCH(request: NextRequest) {
     const finalOccurrenceType = occurrence_type || null;
     const finalHours = finalOccurrenceType ? (occurrence_hours_minutes !== undefined ? occurrence_hours_minutes : null) : null;
     const finalDuration = finalOccurrenceType ? (occurrence_duration || null) : null;
+    
+    // Campos de batidas (booleanos) - apenas se houver tipo de ocorrência
+    const finalMorningEntry = finalOccurrenceType ? (occurrence_morning_entry === true || occurrence_morning_entry === 1) : false;
+    const finalLunchExit = finalOccurrenceType ? (occurrence_lunch_exit === true || occurrence_lunch_exit === 1) : false;
+    const finalAfternoonEntry = finalOccurrenceType ? (occurrence_afternoon_entry === true || occurrence_afternoon_entry === 1) : false;
+    const finalFinalExit = finalOccurrenceType ? (occurrence_final_exit === true || occurrence_final_exit === 1) : false;
 
     // Buscar o registro para obter employee_id e date
     const existingRecord = await query(
@@ -82,11 +93,18 @@ export async function PATCH(request: NextRequest) {
         SET 
           occurrence_type = $1,
           occurrence_hours_minutes = $2,
-          occurrence_duration = $3
+          occurrence_duration = $3,
+          occurrence_morning_entry = $5,
+          occurrence_lunch_exit = $6,
+          occurrence_afternoon_entry = $7,
+          occurrence_final_exit = $8
         WHERE id = $4
-        RETURNING id, occurrence_type, occurrence_hours_minutes, occurrence_duration
+        RETURNING id, occurrence_type, occurrence_hours_minutes, occurrence_duration, 
+                  occurrence_morning_entry, occurrence_lunch_exit, 
+                  occurrence_afternoon_entry, occurrence_final_exit
       `,
-      [finalOccurrenceType, finalHours, finalDuration, id]
+      [finalOccurrenceType, finalHours, finalDuration, id, 
+       finalMorningEntry, finalLunchExit, finalAfternoonEntry, finalFinalExit]
     );
 
     if (result.length === 0) {
@@ -103,7 +121,10 @@ export async function PATCH(request: NextRequest) {
       
       // Buscar o registro atualizado após recálculo
       const updatedRecord = await query(
-        `SELECT id, occurrence_type, occurrence_hours_minutes, occurrence_duration, expected_minutes, balance_seconds, worked_minutes
+        `SELECT id, occurrence_type, occurrence_hours_minutes, occurrence_duration, 
+                occurrence_morning_entry, occurrence_lunch_exit, 
+                occurrence_afternoon_entry, occurrence_final_exit,
+                expected_minutes, balance_seconds, worked_minutes
          FROM processed_records 
          WHERE id = $1`,
         [id]
@@ -117,6 +138,10 @@ export async function PATCH(request: NextRequest) {
             occurrence_type: updatedRecord[0].occurrence_type,
             occurrence_hours_minutes: updatedRecord[0].occurrence_hours_minutes,
             occurrence_duration: updatedRecord[0].occurrence_duration,
+            occurrence_morning_entry: updatedRecord[0].occurrence_morning_entry,
+            occurrence_lunch_exit: updatedRecord[0].occurrence_lunch_exit,
+            occurrence_afternoon_entry: updatedRecord[0].occurrence_afternoon_entry,
+            occurrence_final_exit: updatedRecord[0].occurrence_final_exit,
             expected_minutes: updatedRecord[0].expected_minutes,
             balance_seconds: updatedRecord[0].balance_seconds,
             worked_minutes: updatedRecord[0].worked_minutes,
@@ -124,7 +149,7 @@ export async function PATCH(request: NextRequest) {
         });
       }
     } catch (error: any) {
-      console.warn('Erro ao recalcular após atualizar ocorrência:', error.message);
+      // Erro ao recalcular - continuar mesmo assim
       // Retornar o resultado da atualização mesmo se o recálculo falhar
     }
 
@@ -133,7 +158,7 @@ export async function PATCH(request: NextRequest) {
       data: result[0],
     });
   } catch (error: any) {
-    console.error('Erro ao atualizar ocorrência:', error);
+    logger.error('[Update Occurrence] Erro ao atualizar ocorrência:', error);
     return NextResponse.json(
       { error: error.message || 'Erro ao atualizar ocorrência' },
       { status: 500 }

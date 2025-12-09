@@ -95,6 +95,10 @@ if (!useSupabase) {
       occurrence_type TEXT,
       occurrence_hours_minutes INTEGER,
       occurrence_duration TEXT,
+      occurrence_morning_entry INTEGER DEFAULT 0,
+      occurrence_lunch_exit INTEGER DEFAULT 0,
+      occurrence_afternoon_entry INTEGER DEFAULT 0,
+      occurrence_final_exit INTEGER DEFAULT 0,
       FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
       UNIQUE(employee_id, date)
     );
@@ -118,6 +122,10 @@ if (!useSupabase) {
     { name: 'occurrence_type', type: 'TEXT' },
     { name: 'occurrence_hours_minutes', type: 'INTEGER' },
     { name: 'occurrence_duration', type: 'TEXT' },
+    { name: 'occurrence_morning_entry', type: 'INTEGER DEFAULT 0' },
+    { name: 'occurrence_lunch_exit', type: 'INTEGER DEFAULT 0' },
+    { name: 'occurrence_afternoon_entry', type: 'INTEGER DEFAULT 0' },
+    { name: 'occurrence_final_exit', type: 'INTEGER DEFAULT 0' },
   ];
   
   for (const col of newColumns) {
