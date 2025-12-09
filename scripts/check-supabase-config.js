@@ -89,3 +89,4 @@ console.log('\n🧪 Para testar a conexão, execute:');
 console.log('   node scripts/test-supabase-connection.js\n');
 
 
+
