@@ -27,6 +27,8 @@ export interface WorkSchedule {
   morning_end: string | null; // HH:mm - Saída almoço (null se não trabalha de manhã)
   afternoon_start: string | null; // HH:mm - Entrada tarde (null se não trabalha de tarde)
   afternoon_end: string | null; // HH:mm - Saída tarde (null se não trabalha de tarde)
+  shift_type?: 'FULL_DAY' | 'MORNING_ONLY' | 'AFTERNOON_ONLY' | null; // Tipo de turno (FULL_DAY = padrão)
+  break_minutes?: number | null; // Minutos do intervalo obrigatório (ex: 20 para horistas)
 }
 
 export interface ProcessedRecord {

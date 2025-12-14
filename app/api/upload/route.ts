@@ -83,9 +83,10 @@ export async function POST(request: NextRequest) {
     }
     
     // Processar registros
+    let savedOccurrences: Map<string, any> = new Map();
     try {
       logger.info(`Iniciando processamento de ${records.length} registros...`);
-      await processTimeRecords(records);
+      savedOccurrences = await processTimeRecords(records);
     } catch (error: any) {
       logger.error('Erro ao processar registros no banco:', error);
       
@@ -114,6 +115,53 @@ export async function POST(request: NextRequest) {
         .filter((date): date is string => date !== null)
     );
     
+    // Restaurar ocorrências após recálculo
+    const restoreOccurrences = async () => {
+      if (savedOccurrences.size === 0) return;
+      
+      const { query } = await import('@/infrastructure/database');
+      logger.info(`Restaurando ${savedOccurrences.size} ocorrência(s)...`);
+      
+      for (const [key, occ] of savedOccurrences.entries()) {
+        const [employeeId, date] = key.split('-');
+        try {
+          await query(
+            `UPDATE processed_records 
+             SET occurrence_type = $1,
+                 occurrence_hours_minutes = $2,
+                 occurrence_duration = $3,
+                 occurrence_morning_entry = $4,
+                 occurrence_lunch_exit = $5,
+                 occurrence_afternoon_entry = $6,
+                 occurrence_final_exit = $7
+             WHERE employee_id = $8 AND date = $9`,
+            [
+              occ.occurrence_type,
+              occ.occurrence_hours_minutes,
+              occ.occurrence_duration,
+              occ.occurrence_morning_entry || false,
+              occ.occurrence_lunch_exit || false,
+              occ.occurrence_afternoon_entry || false,
+              occ.occurrence_final_exit || false,
+              parseInt(employeeId),
+              date
+            ]
+          );
+        } catch (error: any) {
+          logger.error(`Erro ao restaurar ocorrência para ${key}:`, error);
+        }
+      }
+      
+      // Recalcular após restaurar ocorrências para ajustar saldos
+      for (const date of uniqueDates) {
+        try {
+          await calculateDailyRecords(date);
+        } catch (error: any) {
+          logger.error(`Erro ao recalcular após restaurar ocorrências para data ${date}:`, error);
+        }
+      }
+    };
+    
     for (const date of uniqueDates) {
       try {
         await calculateDailyRecords(date);
@@ -122,6 +170,9 @@ export async function POST(request: NextRequest) {
         // Continua processando outras datas mesmo se uma falhar
       }
     }
+    
+    // Restaurar ocorrências após todos os cálculos
+    await restoreOccurrences();
     
     return NextResponse.json({
       success: true,

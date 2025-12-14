@@ -11,17 +11,54 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     
-    let sql = `
-      SELECT 
-        pr.*,
-        e.id as employee_id,
-        e.en_no,
-        e.name as employee_name,
-        e.department
-      FROM processed_records pr
-      JOIN employees e ON pr.employee_id = e.id
-      WHERE 1=1
-    `;
+    // Detectar se está usando Supabase (Postgres) ou SQLite
+    const useSupabase = !!process.env.SUPABASE_DB_URL;
+    
+    // Query com JOIN para buscar shift_type do schedule baseado no dia da semana
+    // Para Postgres: EXTRACT(DOW FROM date) retorna 0-6 (0=Domingo, 1=Segunda, ..., 6=Sábado)
+    // Para SQLite: strftime('%w', date) retorna 0-6 (0=Domingo, 1=Segunda, ..., 6=Sábado)
+    // Converter para formato do banco: 1=Segunda, 6=Sábado (domingo deve ser NULL, não 0)
+    // IMPORTANTE: O banco usa 1=Segunda, então EXTRACT retorna o mesmo valor (1-6), só precisamos filtrar domingo
+    let sql: string;
+    if (useSupabase) {
+      // Postgres: EXTRACT(DOW) retorna 0-6, onde 0=Domingo, 1=Segunda, etc.
+      // work_schedules usa 1=Segunda, então o valor já está correto (não precisa converter)
+      sql = `
+        SELECT 
+          pr.*,
+          e.id as employee_id,
+          e.en_no,
+          e.name as employee_name,
+          e.department,
+          ws.shift_type,
+          ws.break_minutes
+        FROM processed_records pr
+        JOIN employees e ON pr.employee_id = e.id
+        LEFT JOIN work_schedules ws ON ws.employee_id = e.id 
+          AND ws.day_of_week = EXTRACT(DOW FROM pr.date)
+          AND EXTRACT(DOW FROM pr.date) BETWEEN 1 AND 6
+        WHERE 1=1
+      `;
+    } else {
+      // SQLite: strftime('%w') retorna 0-6, onde 0=Domingo, 1=Segunda, etc.
+      // work_schedules usa 1=Segunda, então o valor já está correto
+      sql = `
+        SELECT 
+          pr.*,
+          e.id as employee_id,
+          e.en_no,
+          e.name as employee_name,
+          e.department,
+          ws.shift_type,
+          ws.break_minutes
+        FROM processed_records pr
+        JOIN employees e ON pr.employee_id = e.id
+        LEFT JOIN work_schedules ws ON ws.employee_id = e.id 
+          AND ws.day_of_week = CAST(strftime('%w', pr.date) AS INTEGER)
+          AND CAST(strftime('%w', pr.date) AS INTEGER) BETWEEN 1 AND 6
+        WHERE 1=1
+      `;
+    }
     
     const params: any[] = [];
     
@@ -31,12 +68,24 @@ export async function GET(request: NextRequest) {
     }
     
     if (startDate) {
-      sql += ' AND pr.date >= $' + (params.length + 1);
+      // Para Postgres: DATE type pode ser comparado diretamente com string
+      // Para SQLite: garantir comparação como string no formato correto
+      if (useSupabase) {
+        sql += ' AND pr.date >= $' + (params.length + 1) + '::date';
+      } else {
+        sql += ' AND date(pr.date) >= $' + (params.length + 1);
+      }
       params.push(startDate);
     }
     
     if (endDate) {
-      sql += ' AND pr.date <= $' + (params.length + 1);
+      // Para Postgres: DATE type pode ser comparado diretamente com string
+      // Para SQLite: garantir comparação como string no formato correto
+      if (useSupabase) {
+        sql += ' AND pr.date <= $' + (params.length + 1) + '::date';
+      } else {
+        sql += ' AND date(pr.date) <= $' + (params.length + 1);
+      }
       params.push(endDate);
     }
     
@@ -109,6 +158,8 @@ export async function GET(request: NextRequest) {
         occurrence_lunch_exit: report.occurrence_lunch_exit || false, // Ocorrência na saída do almoço
         occurrence_afternoon_entry: report.occurrence_afternoon_entry || false, // Ocorrência na entrada da tarde
         occurrence_final_exit: report.occurrence_final_exit || false, // Ocorrência na saída final
+        shift_type: report.shift_type || 'FULL_DAY', // Tipo de turno
+        break_minutes: report.break_minutes || null, // Minutos do intervalo
       };
     });
     

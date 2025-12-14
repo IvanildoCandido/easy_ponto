@@ -120,6 +120,7 @@ export function applyCltTolerance(
  * @param punches - Horários das batidas reais
  * @param schedule - Horários previstos
  * @param workDate - Data de trabalho
+ * @param singleShiftInfo - Informações sobre turno único (opcional)
  * @returns Deltas em minutos (pode ser negativo)
  */
 export function computeStartEndDeltas(
@@ -135,7 +136,8 @@ export function computeStartEndDeltas(
     afternoonStart: string | null;
     afternoonEnd: string | null;
   },
-  workDate: string
+  workDate: string,
+  singleShiftInfo?: { shiftType: 'MORNING_ONLY' | 'AFTERNOON_ONLY'; breakMinutes: number }
 ): {
   deltaStart: number | null;
   deltaEnd: number | null;
@@ -144,32 +146,66 @@ export function computeStartEndDeltas(
   let firstEntry: { time: string; scheduled: string } | null = null;
   let lastExit: { time: string; scheduled: string } | null = null;
   
-  // Primeira entrada (início da jornada)
-  if (punches.morningEntry && schedule.morningStart) {
-    firstEntry = {
-      time: punches.morningEntry,
-      scheduled: schedule.morningStart,
-    };
-  } else if (punches.afternoonEntry && schedule.afternoonStart && !schedule.morningStart) {
-    // Se não trabalha de manhã, entrada tarde é a primeira entrada
-    firstEntry = {
-      time: punches.afternoonEntry,
-      scheduled: schedule.afternoonStart,
-    };
-  }
-  
-  // Última saída (fim da jornada)
-  if (punches.finalExit && schedule.afternoonEnd) {
-    lastExit = {
-      time: punches.finalExit,
-      scheduled: schedule.afternoonEnd,
-    };
-  } else if (punches.lunchExit && schedule.morningEnd && !schedule.afternoonStart) {
-    // Se não trabalha de tarde, saída almoço é a última saída
-    lastExit = {
-      time: punches.lunchExit,
-      scheduled: schedule.morningEnd,
-    };
+  // TURNO ÚNICO: primeira entrada sempre é morningEntry (1ª batida), última saída sempre é finalExit (4ª batida)
+  if (singleShiftInfo) {
+    if (singleShiftInfo.shiftType === 'MORNING_ONLY') {
+      // Turno único manhã: entrada é morningEntry, comparar com morningStart; saída é finalExit, comparar com afternoonEnd
+      if (punches.morningEntry && schedule.morningStart) {
+        firstEntry = {
+          time: punches.morningEntry,
+          scheduled: schedule.morningStart,
+        };
+      }
+      if (punches.finalExit && schedule.afternoonEnd) {
+        lastExit = {
+          time: punches.finalExit,
+          scheduled: schedule.afternoonEnd,
+        };
+      }
+    } else if (singleShiftInfo.shiftType === 'AFTERNOON_ONLY') {
+      // Turno único tarde: entrada é morningEntry (1ª batida), comparar com afternoonStart; saída é finalExit, comparar com afternoonEnd
+      if (punches.morningEntry && schedule.afternoonStart) {
+        firstEntry = {
+          time: punches.morningEntry,
+          scheduled: schedule.afternoonStart,
+        };
+      }
+      if (punches.finalExit && schedule.afternoonEnd) {
+        lastExit = {
+          time: punches.finalExit,
+          scheduled: schedule.afternoonEnd,
+        };
+      }
+    }
+  } else {
+    // JORNADA COMPLETA: lógica padrão
+    // Primeira entrada (início da jornada)
+    if (punches.morningEntry && schedule.morningStart) {
+      firstEntry = {
+        time: punches.morningEntry,
+        scheduled: schedule.morningStart,
+      };
+    } else if (punches.afternoonEntry && schedule.afternoonStart && !schedule.morningStart) {
+      // Se não trabalha de manhã, entrada tarde é a primeira entrada
+      firstEntry = {
+        time: punches.afternoonEntry,
+        scheduled: schedule.afternoonStart,
+      };
+    }
+    
+    // Última saída (fim da jornada)
+    if (punches.finalExit && schedule.afternoonEnd) {
+      lastExit = {
+        time: punches.finalExit,
+        scheduled: schedule.afternoonEnd,
+      };
+    } else if (punches.lunchExit && schedule.morningEnd && !schedule.afternoonStart) {
+      // Se não trabalha de tarde, saída almoço é a última saída
+      lastExit = {
+        time: punches.lunchExit,
+        scheduled: schedule.morningEnd,
+      };
+    }
   }
   
   // Calcular deltas
@@ -180,6 +216,9 @@ export function computeStartEndDeltas(
     try {
       const real = parse(firstEntry.time, 'yyyy-MM-dd HH:mm:ss', new Date());
       const scheduled = parse(`${workDate} ${firstEntry.scheduled}:00`, 'yyyy-MM-dd HH:mm:ss', new Date());
+      // Delta = real - scheduled
+      // Positivo = atraso (real > scheduled)
+      // Negativo = antecipação (real < scheduled)
       const deltaSeconds = calculateSecondsDifference(scheduled, real);
       deltaStart = toMinutesFloor(deltaSeconds);
     } catch (error) {
@@ -191,6 +230,9 @@ export function computeStartEndDeltas(
     try {
       const real = parse(lastExit.time, 'yyyy-MM-dd HH:mm:ss', new Date());
       const scheduled = parse(`${workDate} ${lastExit.scheduled}:00`, 'yyyy-MM-dd HH:mm:ss', new Date());
+      // Delta = real - scheduled
+      // Positivo = saída depois do horário (hora extra)
+      // Negativo = saída antes do horário (saída antecipada)
       const deltaSeconds = calculateSecondsDifference(scheduled, real);
       deltaEnd = toMinutesFloor(deltaSeconds);
     } catch (error) {

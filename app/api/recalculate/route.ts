@@ -29,8 +29,7 @@ export async function POST(request: NextRequest) {
       logger.info('[recalculate] Recalculando TODOS os registros...');
       
       // Buscar todas as datas únicas que têm registros de ponto
-      const isProduction = process.env.NODE_ENV === 'production';
-      const useSupabase = isProduction && process.env.SUPABASE_DB_URL;
+      const useSupabase = !!process.env.SUPABASE_DB_URL;
       
       let sql: string;
       if (useSupabase) {

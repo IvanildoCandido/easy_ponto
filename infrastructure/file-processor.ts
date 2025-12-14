@@ -138,20 +138,50 @@ export async function processTimeRecords(records: TimeRecord[]) {
     }
   }
 
-  // ANTES de inserir, DELETAR registros existentes das datas que serão processadas
+  // ANTES de inserir, SALVAR ocorrências existentes e DELETAR registros das datas que serão processadas
   // Isso evita duplicatas quando o mesmo arquivo é carregado novamente
+  // IMPORTANTE: Preservar ocorrências para restaurar após recálculo
+  const savedOccurrences = new Map<string, any>();
+  
   if (datesToProcess.size > 0) {
     const datesArray = Array.from(datesToProcess);
     logger.info(`Removendo registros existentes das datas: ${datesArray.join(', ')}`);
     
+    // Primeiro, salvar todas as ocorrências existentes antes de deletar
     if (useSupabase) {
-      // Postgres: usar DATE() function com timezone local
       const placeholders = datesArray.map((_, i) => `$${i + 1}`).join(', ');
+      const existingOccurrences = await query<any>(
+        `SELECT employee_id, date, occurrence_type, occurrence_hours_minutes, occurrence_duration,
+                occurrence_morning_entry, occurrence_lunch_exit, occurrence_afternoon_entry, occurrence_final_exit
+         FROM processed_records 
+         WHERE date IN (${placeholders})
+           AND (occurrence_type IS NOT NULL 
+             OR occurrence_morning_entry = true 
+             OR occurrence_lunch_exit = true 
+             OR occurrence_afternoon_entry = true 
+             OR occurrence_final_exit = true)`,
+        datesArray
+      );
+      
+      for (const occ of existingOccurrences) {
+        const key = `${occ.employee_id}-${occ.date}`;
+        savedOccurrences.set(key, {
+          occurrence_type: occ.occurrence_type,
+          occurrence_hours_minutes: occ.occurrence_hours_minutes,
+          occurrence_duration: occ.occurrence_duration,
+          occurrence_morning_entry: occ.occurrence_morning_entry,
+          occurrence_lunch_exit: occ.occurrence_lunch_exit,
+          occurrence_afternoon_entry: occ.occurrence_afternoon_entry,
+          occurrence_final_exit: occ.occurrence_final_exit,
+        });
+      }
+      
+      // Deletar time_records
       await query(
         `DELETE FROM time_records WHERE DATE(datetime AT TIME ZONE 'America/Sao_Paulo') IN (${placeholders})`,
         datesArray
       );
-      // Também deletar processed_records das mesmas datas
+      // Deletar processed_records (ocorrências serão restauradas após recálculo)
       await query(
         `DELETE FROM processed_records WHERE date IN (${placeholders})`,
         datesArray
@@ -159,17 +189,51 @@ export async function processTimeRecords(records: TimeRecord[]) {
     } else {
       // SQLite: usar LIKE
       for (const date of datesArray) {
+        // Salvar ocorrências existentes
+        const existingOccurrences = await query<any>(
+          `SELECT employee_id, date, occurrence_type, occurrence_hours_minutes, occurrence_duration,
+                  occurrence_morning_entry, occurrence_lunch_exit, occurrence_afternoon_entry, occurrence_final_exit
+           FROM processed_records 
+           WHERE date = ?
+             AND (occurrence_type IS NOT NULL 
+               OR occurrence_morning_entry = 1 
+               OR occurrence_lunch_exit = 1 
+               OR occurrence_afternoon_entry = 1 
+               OR occurrence_final_exit = 1)`,
+          [date]
+        );
+        
+        for (const occ of existingOccurrences) {
+          const key = `${occ.employee_id}-${occ.date}`;
+          savedOccurrences.set(key, {
+            occurrence_type: occ.occurrence_type,
+            occurrence_hours_minutes: occ.occurrence_hours_minutes,
+            occurrence_duration: occ.occurrence_duration,
+            occurrence_morning_entry: occ.occurrence_morning_entry,
+            occurrence_lunch_exit: occ.occurrence_lunch_exit,
+            occurrence_afternoon_entry: occ.occurrence_afternoon_entry,
+            occurrence_final_exit: occ.occurrence_final_exit,
+          });
+        }
+        
         await query(
-          `DELETE FROM time_records WHERE datetime LIKE $1`,
+          `DELETE FROM time_records WHERE datetime LIKE ?`,
           [`${date}%`]
         );
         await query(
-          `DELETE FROM processed_records WHERE date = $1`,
+          `DELETE FROM processed_records WHERE date = ?`,
           [date]
         );
       }
     }
+    
+    if (savedOccurrences.size > 0) {
+      logger.info(`Salvou ${savedOccurrences.size} ocorrência(s) para restaurar após recálculo`);
+    }
   }
+  
+  // Exportar savedOccurrences para ser usado após recálculo
+  // Isso será feito através de uma função helper que será chamada após processTimeRecords
 
   // Primeiro, inserir todos os funcionários únicos de uma vez
   const uniqueEmployees = new Map<number, { enNo: number; name: string; department: string }>();
@@ -264,6 +328,9 @@ export async function processTimeRecords(records: TimeRecord[]) {
   }
 
   logger.info(`Todos os ${records.length} registros foram salvos com sucesso`);
+  
+  // Retornar ocorrências salvas para restaurar após recálculo
+  return savedOccurrences;
 }
 
 

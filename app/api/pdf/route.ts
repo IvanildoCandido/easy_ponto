@@ -40,6 +40,10 @@ export async function GET(request: NextRequest) {
     // A função query() do database.ts já detecta automaticamente se está usando Supabase ou SQLite
     // Para Supabase (Postgres): o campo date é do tipo DATE
     // Para SQLite: será convertido automaticamente pela função convertPostgresToSqlite
+    // Query com JOIN para buscar shift_type do schedule
+    // Usar sintaxe Postgres - será convertida automaticamente para SQLite se necessário
+    // EXTRACT(DOW FROM date) retorna 0-6 (0=Domingo, 1=Segunda, ..., 6=Sábado)
+    // work_schedules usa 1=Segunda, então o valor já está correto (só filtrar domingo)
     let reports = (await query(
       `
         SELECT 
@@ -74,9 +78,14 @@ export async function GET(request: NextRequest) {
           COALESCE(pr.occurrence_afternoon_entry, false) as occurrence_afternoon_entry,
           COALESCE(pr.occurrence_final_exit, false) as occurrence_final_exit,
           e.name as employee_name,
-          e.department
+          e.department,
+          ws.shift_type,
+          ws.break_minutes
         FROM processed_records pr
         JOIN employees e ON pr.employee_id = e.id
+        LEFT JOIN work_schedules ws ON ws.employee_id = e.id 
+          AND ws.day_of_week = EXTRACT(DOW FROM pr.date)
+          AND EXTRACT(DOW FROM pr.date) BETWEEN 1 AND 6
         WHERE pr.employee_id = $1 
           AND pr.date >= $2
           AND pr.date <= $3
@@ -205,6 +214,10 @@ export async function GET(request: NextRequest) {
     const totalSaldoClt = reports.reduce((sum, r) => sum + (r.saldo_clt_minutes || 0), 0);
     const totalIntervalExcess = reports.reduce((sum, r) => sum + (Math.round((r.interval_excess_seconds || 0) / 60)), 0);
     
+    // Detectar se há turno único (verificar primeiro report com shift_type)
+    const firstReportWithSchedule = reports.find(r => r.shift_type);
+    const isSingleShift = firstReportWithSchedule?.shift_type === 'MORNING_ONLY' || firstReportWithSchedule?.shift_type === 'AFTERNOON_ONLY';
+    
     // Formatar dados para o PDF
     const pdfData = {
       employee: {
@@ -214,6 +227,8 @@ export async function GET(request: NextRequest) {
       },
       month: format(monthDate, 'MMMM yyyy', { locale: ptBR }),
       monthYear: format(monthDate, 'MM/yyyy'),
+      isSingleShift: isSingleShift || false, // Flag para indicar se é turno único
+      shiftType: firstReportWithSchedule?.shift_type || 'FULL_DAY',
       days: allDays.map(day => {
         const dateStr = format(day, 'yyyy-MM-dd');
         const report = reportsByDate.get(dateStr);

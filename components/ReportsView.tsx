@@ -41,11 +41,13 @@ interface Report {
   saida_antec_clt_minutes?: number; // Saída antecipada CLT (após tolerância)
   saldo_clt_minutes?: number; // SALDO_CLT (para fins de pagamento/banco de horas legal)
   status: 'OK' | 'INCONSISTENTE';
-  occurrence_type?: 'FERIADO' | 'FALTA' | 'FOLGA' | 'ATESTADO' | 'DECLARACAO' | null;
+  occurrence_type?: 'FERIADO' | 'FALTA' | 'FOLGA' | 'ATESTADO' | 'DECLARACAO' | 'ESQUECIMENTO_BATIDA' | null;
   occurrence_morning_entry?: boolean;
   occurrence_lunch_exit?: boolean;
   occurrence_afternoon_entry?: boolean;
   occurrence_final_exit?: boolean;
+  shift_type?: 'FULL_DAY' | 'MORNING_ONLY' | 'AFTERNOON_ONLY' | null;
+  break_minutes?: number | null;
 }
 
 export default function ReportsView() {
@@ -237,13 +239,20 @@ export default function ReportsView() {
     pdf.setTextColor(0, 0, 0); // Preto
     yPos = headerHeight + 6;
 
+    // Detectar se é turno único
+    const isSingleShift = data.isSingleShift || false;
+    
     // Tabela expandida - larguras ajustadas para ocupar melhor a página A4 (210mm)
     // Colunas: Data, Dia, Ocorr, Entrada, Almoço, Retorno, Saída, Atraso, Extra, Saldo
     // Aumentadas colunas de horário para acomodar nomes completos de ocorrências
     const colWidths = [25, 12, 14, 18, 18, 18, 18, 14, 14, 16];
     const totalTableWidth = colWidths.reduce((sum, w) => sum + w, 0); // Total: ~171mm
     const tableMargin = Math.max(10, (pageWidth - totalTableWidth) / 2); // Centralizar com margem mínima
-    const headers = ['Data', 'Dia', 'Ocorr.', 'Entrada', 'Almoço', 'Retorno', 'Saída', 'Atraso', 'Extra', 'Saldo'];
+    
+    // Headers dinâmicos baseados no tipo de turno
+    const headers = isSingleShift
+      ? ['Data', 'Dia', 'Ocorr.', 'Entrada', 'S. Intervalo', 'E. Pós-Int.', 'Saída Final', 'Atraso', 'Extra', 'Saldo']
+      : ['Data', 'Dia', 'Ocorr.', 'Entrada', 'Almoço', 'Retorno', 'Saída', 'Atraso', 'Extra', 'Saldo'];
     
     // Cabeçalho da tabela com fundo
     pdf.setFillColor(52, 152, 219); // Azul mais claro
@@ -328,6 +337,8 @@ export default function ReportsView() {
         FOLGA: 'Folga',
         ATESTADO: 'Atestado',
         DECLARACAO: 'Declaração',
+        // Abreviar para evitar quebra em PDF
+        ESQUECIMENTO_BATIDA: 'E. Batida',
       };
       
       // Verificar se tem ocorrência
@@ -616,6 +627,7 @@ export default function ReportsView() {
       FOLGA: 'Folga',
       ATESTADO: 'Atestado',
       DECLARACAO: 'Declaração',
+      ESQUECIMENTO_BATIDA: 'E. Batida',
     };
     return type ? labels[type] || type : '';
   };
@@ -627,6 +639,7 @@ export default function ReportsView() {
       FOLGA: 'bg-blue-100 text-blue-800 border-blue-300',
       ATESTADO: 'bg-yellow-100 text-yellow-800 border-yellow-300',
       DECLARACAO: 'bg-green-100 text-green-800 border-green-300',
+      ESQUECIMENTO_BATIDA: 'bg-orange-100 text-orange-800 border-orange-300',
     };
     return type ? colors[type] || 'bg-gray-100 text-gray-800 border-gray-300' : '';
   };
@@ -856,18 +869,38 @@ export default function ReportsView() {
                   </>
                 ) : (
                   <>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                      E. Manhã
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                      S. Alm.
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                      E. Tarde
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                      S. Tarde
-                    </th>
+                    {/* Headers dinâmicos: verificar se há turno único nos reports */}
+                    {reports.length > 0 && (reports[0].shift_type === 'MORNING_ONLY' || reports[0].shift_type === 'AFTERNOON_ONLY') ? (
+                      <>
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                          Entrada
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                          S. Intervalo
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                          E. Pós-Int.
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                          Saída Final
+                        </th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                          E. Manhã
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                          S. Alm.
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                          E. Tarde
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                          S. Tarde
+                        </th>
+                      </>
+                    )}
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
                       ATRASO_CLT
                     </th>
@@ -889,6 +922,7 @@ export default function ReportsView() {
                 const expectedMinutes = report.expected_minutes || 0;
                 const balance = workedMinutes - expectedMinutes;
                 const isInconsistent = (report.status || 'OK') === 'INCONSISTENTE';
+                const isSingleShift = report.shift_type === 'MORNING_ONLY' || report.shift_type === 'AFTERNOON_ONLY';
                 return (
                   <tr key={report.id} className="hover:bg-primary-50/30 transition-colors">
                     <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
@@ -949,42 +983,91 @@ export default function ReportsView() {
                       </>
                     ) : (
                       <>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
-                          {report.occurrence_morning_entry && report.occurrence_type ? (
-                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                              {getOccurrenceTypeLabel(report.occurrence_type)}
-                            </span>
-                          ) : (
-                            <span className="text-neutral-900">{formatTime(report.morning_entry)}</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
-                          {report.occurrence_lunch_exit && report.occurrence_type ? (
-                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                              {getOccurrenceTypeLabel(report.occurrence_type)}
-                            </span>
-                          ) : (
-                            <span className="text-neutral-900">{formatTime(report.lunch_exit)}</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
-                          {report.occurrence_afternoon_entry && report.occurrence_type ? (
-                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                              {getOccurrenceTypeLabel(report.occurrence_type)}
-                            </span>
-                          ) : (
-                            <span className="text-neutral-900">{formatTime(report.afternoon_entry)}</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
-                          {report.occurrence_final_exit && report.occurrence_type ? (
-                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                              {getOccurrenceTypeLabel(report.occurrence_type)}
-                            </span>
-                          ) : (
-                            <span className="text-neutral-900">{formatTime(report.final_exit)}</span>
-                          )}
-                        </td>
+                        {/* Para turnos únicos, os campos são sempre na ordem: 1ª=Entrada, 2ª=Saída intervalo, 3ª=Entrada pós-intervalo, 4ª=Saída final */}
+                        {isSingleShift ? (
+                          <>
+                            {/* Coluna 1: Entrada (1ª batida) */}
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                              {report.occurrence_morning_entry && report.occurrence_type ? (
+                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-900">{formatTime(report.morning_entry)}</span>
+                              )}
+                            </td>
+                            {/* Coluna 2: Saída Intervalo (2ª batida) */}
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                              {report.occurrence_lunch_exit && report.occurrence_type ? (
+                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-900">{formatTime(report.lunch_exit)}</span>
+                              )}
+                            </td>
+                            {/* Coluna 3: Entrada Pós-Intervalo (3ª batida) */}
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                              {report.occurrence_afternoon_entry && report.occurrence_type ? (
+                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-900">{formatTime(report.afternoon_entry)}</span>
+                              )}
+                            </td>
+                            {/* Coluna 4: Saída Final (4ª batida) */}
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                              {report.occurrence_final_exit && report.occurrence_type ? (
+                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-900">{formatTime(report.final_exit)}</span>
+                              )}
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            {/* Jornada completa: manter mapeamento original */}
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                              {report.occurrence_morning_entry && report.occurrence_type ? (
+                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-900">{formatTime(report.morning_entry)}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                              {report.occurrence_lunch_exit && report.occurrence_type ? (
+                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-900">{formatTime(report.lunch_exit)}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                              {report.occurrence_afternoon_entry && report.occurrence_type ? (
+                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-900">{formatTime(report.afternoon_entry)}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                              {report.occurrence_final_exit && report.occurrence_type ? (
+                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-900">{formatTime(report.final_exit)}</span>
+                              )}
+                            </td>
+                          </>
+                        )}
                         <td className="px-3 py-3 whitespace-nowrap text-xs">
                           {report.atraso_clt_minutes && report.atraso_clt_minutes > 0 ? (
                             <span className="text-red-600 font-medium" title="Atraso CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
@@ -1168,58 +1251,77 @@ export default function ReportsView() {
                   <option value="FOLGA">Folga</option>
                   <option value="ATESTADO">Atestado</option>
                   <option value="DECLARACAO">Declaração</option>
+                  <option value="ESQUECIMENTO_BATIDA">Esquecimento de Batida</option>
                 </select>
               </div>
 
               {/* Seleção de Batidas (apenas se houver tipo selecionado) */}
-              {(editingOccurrenceType || report.occurrence_type) && (
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-neutral-700 mb-3">
-                    Aplicar ocorrência nas batidas:
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editingOccurrenceMorningEntry || report.occurrence_morning_entry || false}
-                        onChange={(e) => setEditingOccurrenceMorningEntry(e.target.checked)}
-                        className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
-                      />
-                      <span className="text-sm text-neutral-700">Entrada Manhã</span>
+              {(editingOccurrenceType || report.occurrence_type) && (() => {
+                // Detectar se é turno único (horista)
+                const isSingleShift = report.shift_type === 'MORNING_ONLY' || report.shift_type === 'AFTERNOON_ONLY';
+                
+                // Labels dinâmicos baseados no tipo de turno
+                const punchLabels = isSingleShift ? {
+                  morning: 'Entrada',
+                  lunch: 'Saída Intervalo',
+                  afternoon: 'Entrada Pós-Intervalo',
+                  final: 'Saída Final'
+                } : {
+                  morning: 'Entrada Manhã',
+                  lunch: 'Saída Almoço',
+                  afternoon: 'Entrada Tarde',
+                  final: 'Saída Final'
+                };
+                
+                return (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-neutral-700 mb-3">
+                      Aplicar ocorrência nas batidas:
                     </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editingOccurrenceLunchExit || report.occurrence_lunch_exit || false}
-                        onChange={(e) => setEditingOccurrenceLunchExit(e.target.checked)}
-                        className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
-                      />
-                      <span className="text-sm text-neutral-700">Saída Almoço</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editingOccurrenceAfternoonEntry || report.occurrence_afternoon_entry || false}
-                        onChange={(e) => setEditingOccurrenceAfternoonEntry(e.target.checked)}
-                        className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
-                      />
-                      <span className="text-sm text-neutral-700">Entrada Tarde</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editingOccurrenceFinalExit || report.occurrence_final_exit || false}
-                        onChange={(e) => setEditingOccurrenceFinalExit(e.target.checked)}
-                        className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
-                      />
-                      <span className="text-sm text-neutral-700">Saída Final</span>
-                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editingOccurrenceMorningEntry || report.occurrence_morning_entry || false}
+                          onChange={(e) => setEditingOccurrenceMorningEntry(e.target.checked)}
+                          className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
+                        />
+                        <span className="text-sm text-neutral-700">{punchLabels.morning}</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editingOccurrenceLunchExit || report.occurrence_lunch_exit || false}
+                          onChange={(e) => setEditingOccurrenceLunchExit(e.target.checked)}
+                          className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
+                        />
+                        <span className="text-sm text-neutral-700">{punchLabels.lunch}</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editingOccurrenceAfternoonEntry || report.occurrence_afternoon_entry || false}
+                          onChange={(e) => setEditingOccurrenceAfternoonEntry(e.target.checked)}
+                          className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
+                        />
+                        <span className="text-sm text-neutral-700">{punchLabels.afternoon}</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editingOccurrenceFinalExit || report.occurrence_final_exit || false}
+                          onChange={(e) => setEditingOccurrenceFinalExit(e.target.checked)}
+                          className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
+                        />
+                        <span className="text-sm text-neutral-700">{punchLabels.final}</span>
+                      </label>
+                    </div>
+                    <p className="mt-2 text-xs text-neutral-500">
+                      Marque as batidas onde a ocorrência deve aparecer
+                    </p>
                   </div>
-                  <p className="mt-2 text-xs text-neutral-500">
-                    Marque as batidas onde a ocorrência deve aparecer
-                  </p>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Botões */}
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-neutral-200">

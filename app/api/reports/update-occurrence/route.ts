@@ -27,7 +27,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Validar occurrence_type se fornecido
-    const validTypes = ['FERIADO', 'FALTA', 'FOLGA', 'ATESTADO', 'DECLARACAO'];
+    const validTypes = ['FERIADO', 'FALTA', 'FOLGA', 'ATESTADO', 'DECLARACAO', 'ESQUECIMENTO_BATIDA'];
     if (occurrence_type && !validTypes.includes(occurrence_type)) {
       return NextResponse.json(
         { error: `Tipo de ocorrência inválido. Valores permitidos: ${validTypes.join(', ')} ou null` },

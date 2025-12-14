@@ -90,6 +90,11 @@ export async function calculateDailyRecords(date: string) {
         )
       : null;
     
+    // Identificar tipo de turno
+    const shiftType = schedule?.shift_type || 'FULL_DAY';
+    const breakMinutes = schedule?.break_minutes || null;
+    const isSingleShift = shiftType === 'MORNING_ONLY' || shiftType === 'AFTERNOON_ONLY';
+    
     if (!schedule) {
       logger.warn(`Funcionário ${empId} - ${date}: Nenhum schedule encontrado para este dia`);
     }
@@ -134,44 +139,58 @@ export async function calculateDailyRecords(date: string) {
     let afternoonEntry: string | null = null;
     let finalExit: string | null = null;
     
-    // NOVA LÓGICA (simplificada, ignorando completamente In/Out):
-    // - Se houver 4 ou mais batidas no dia:
-    //      1ª  -> Entrada Manhã
-    //      2ª  -> Saída Almoço
-    //      3ª  -> Entrada Tarde
-    //      4ª  -> Saída Tarde
-    // - Se houver exatamente 2 batidas:
-    //      se 1ª < 12h  -> Entrada Manhã / Saída Almoço
-    //      se 1ª >= 12h -> Entrada Tarde / Saída Tarde
-    // - Se houver 3 batidas:
-    //      1ª -> Entrada Manhã
-    //      2ª -> Saída Almoço
-    //      3ª -> Entrada Tarde  (sem saída registrada)
-    // - Se houver 1 batida:
-    //      se < 12h  -> Entrada Manhã
-    //      se >= 12h -> Entrada Tarde
+    // LÓGICA DE IDENTIFICAÇÃO DE BATIDAS
+    // Diferença entre turno único (horistas) e jornada completa:
+    // - Turno único com 4 batidas: Entrada turno, Saída intervalo, Entrada pós-intervalo, Saída final
+    // - Jornada completa com 4 batidas: Entrada manhã, Saída almoço, Entrada tarde, Saída tarde
     if (uniqueByTime.length >= 1) {
       const punches = uniqueByTime;
 
-      if (punches.length >= 4) {
+      if (isSingleShift && punches.length >= 4) {
+        // TURNO ÚNICO: 4 batidas são para o mesmo turno com intervalo
+        // IMPORTANTE: Para manter compatibilidade com a estrutura existente, sempre usar:
+        // - morningEntry = 1ª batida (Entrada do turno)
+        // - lunchExit = 2ª batida (Saída para intervalo)
+        // - afternoonEntry = 3ª batida (Entrada pós-intervalo)
+        // - finalExit = 4ª batida (Saída final)
+        // Isso funciona tanto para MORNING_ONLY quanto AFTERNOON_ONLY
+        morningEntry = punches[0].datetime;    // 1ª batida: Entrada do turno
+        lunchExit = punches[1].datetime;       // 2ª batida: Saída para intervalo
+        afternoonEntry = punches[2].datetime;  // 3ª batida: Entrada pós-intervalo
+        finalExit = punches[3].datetime;       // 4ª batida: Saída final
+      } else if (punches.length >= 4) {
+        // JORNADA COMPLETA: 4 batidas normais
         morningEntry = punches[0].datetime;
         lunchExit = punches[1].datetime;
         afternoonEntry = punches[2].datetime;
         finalExit = punches[3].datetime;
       } else if (punches.length === 3) {
-        morningEntry = punches[0].datetime;
-        lunchExit = punches[1].datetime;
-        afternoonEntry = punches[2].datetime;
+        // TURNO ÚNICO: 3 batidas (falta uma)
+        // Sempre mapear na ordem: 1ª=Entrada, 2ª=Saída intervalo, 3ª=Entrada pós-intervalo
+        if (isSingleShift) {
+          morningEntry = punches[0].datetime;    // 1ª batida: Entrada
+          lunchExit = punches[1].datetime;       // 2ª batida: Saída intervalo
+          afternoonEntry = punches[2].datetime;  // 3ª batida: Entrada pós-intervalo
+        } else {
+          // Jornada completa com 3 batidas
+          morningEntry = punches[0].datetime;
+          lunchExit = punches[1].datetime;
+          afternoonEntry = punches[2].datetime;
+        }
       } else if (punches.length === 2) {
         const firstTime = parse(punches[0].datetime, 'yyyy-MM-dd HH:mm:ss', new Date());
         const firstHour = firstTime.getHours();
         
-        if (firstHour < 12) {
-          // Só manhã
+        if (isSingleShift) {
+          // Turno único com 2 batidas: 1ª=Entrada, 2ª=Saída final
+          morningEntry = punches[0].datetime;
+          finalExit = punches[1].datetime;
+        } else if (firstHour < 12) {
+          // Jornada completa: só manhã
           morningEntry = punches[0].datetime;
           lunchExit = punches[1].datetime;
         } else {
-          // Só tarde
+          // Jornada completa: só tarde
           afternoonEntry = punches[0].datetime;
           finalExit = punches[1].datetime;
         }
@@ -179,7 +198,10 @@ export async function calculateDailyRecords(date: string) {
         const firstTime = parse(punches[0].datetime, 'yyyy-MM-dd HH:mm:ss', new Date());
         const firstHour = firstTime.getHours();
         
-        if (firstHour < 12) {
+        if (isSingleShift) {
+          // Turno único com 1 batida: sempre usar morningEntry (será interpretado corretamente)
+          morningEntry = punches[0].datetime;
+        } else if (firstHour < 12) {
           morningEntry = punches[0].datetime;
         } else {
           afternoonEntry = punches[0].datetime;
@@ -192,12 +214,33 @@ export async function calculateDailyRecords(date: string) {
     const lastExit = finalExit || lunchExit;
     
     // Preparar horários previstos
-    const scheduledTimes: ScheduledTimes = {
-      morningStart: schedule?.morning_start || null,
-      morningEnd: schedule?.morning_end || null,
-      afternoonStart: schedule?.afternoon_start || null,
-      afternoonEnd: schedule?.afternoon_end || null,
-    };
+    // Para turno único, ajustar campos conforme o tipo
+    let scheduledTimes: ScheduledTimes;
+    if (shiftType === 'MORNING_ONLY') {
+      // Turno único manhã: usar morning_start como entrada e afternoon_end como saída final
+      scheduledTimes = {
+        morningStart: schedule?.morning_start || null,
+        morningEnd: null, // Não tem saída para almoço em turno único
+        afternoonStart: null, // Não tem entrada tarde em turno único
+        afternoonEnd: schedule?.afternoon_end || null, // Saída final do turno
+      };
+    } else if (shiftType === 'AFTERNOON_ONLY') {
+      // Turno único tarde: usar afternoon_start como entrada e afternoon_end como saída final
+      scheduledTimes = {
+        morningStart: null,
+        morningEnd: null,
+        afternoonStart: schedule?.afternoon_start || null,
+        afternoonEnd: schedule?.afternoon_end || null,
+      };
+    } else {
+      // Jornada completa padrão
+      scheduledTimes = {
+        morningStart: schedule?.morning_start || null,
+        morningEnd: schedule?.morning_end || null,
+        afternoonStart: schedule?.afternoon_start || null,
+        afternoonEnd: schedule?.afternoon_end || null,
+      };
+    }
     
     // Preparar batidas
     const punchTimes: PunchTimes = {
@@ -207,16 +250,36 @@ export async function calculateDailyRecords(date: string) {
       finalExit,
     };
     
+    // Preparar informações de turno único para passar ao cálculo
+    // IMPORTANTE: Para turnos únicos, breakMinutes pode ser null mas ainda assim é turno único
+    // Se breakMinutes for null, usar 20 como padrão (direito legal mínimo)
+    const singleShiftInfoForCalc = isSingleShift
+      ? { 
+          shiftType: shiftType as 'MORNING_ONLY' | 'AFTERNOON_ONLY', 
+          breakMinutes: breakMinutes !== null && breakMinutes !== undefined ? breakMinutes : 20 
+        }
+      : undefined;
+    
+    if (isSingleShift) {
+      logger.info(`[calculateDailyRecords] Turno único detectado: ${shiftType}, breakMinutes: ${singleShiftInfoForCalc?.breakMinutes}, morningEntry: ${morningEntry}, scheduledAfternoonStart: ${scheduledTimes.afternoonStart}`);
+    }
+    
     // Calcular usando o novo modelo: Saldo = HorasTrabalhadas - HorasPrevistas
-    const summary = computeDaySummaryV2(punchTimes, scheduledTimes, date);
+    const summary = computeDaySummaryV2(punchTimes, scheduledTimes, date, singleShiftInfoForCalc);
     
     // Verificar se já existe um registro com ocorrência para preservar os dados
     const existingRecord = await queryOne<{
       occurrence_type: string | null;
       occurrence_hours_minutes: number | null;
       occurrence_duration: string | null;
+      occurrence_morning_entry: boolean | null;
+      occurrence_lunch_exit: boolean | null;
+      occurrence_afternoon_entry: boolean | null;
+      occurrence_final_exit: boolean | null;
     }>(
-      `SELECT occurrence_type, occurrence_hours_minutes, occurrence_duration 
+      `SELECT occurrence_type, occurrence_hours_minutes, occurrence_duration,
+              occurrence_morning_entry, occurrence_lunch_exit, 
+              occurrence_afternoon_entry, occurrence_final_exit
        FROM processed_records 
        WHERE employee_id = $1 AND date = $2`,
       [empId, date]
@@ -276,6 +339,10 @@ export async function calculateDailyRecords(date: string) {
     const occurrenceType = existingRecord?.occurrence_type || null;
     const occurrenceHoursMinutes = existingRecord?.occurrence_hours_minutes || null;
     const occurrenceDuration = existingRecord?.occurrence_duration || null;
+    const occurrenceMorningEntry = existingRecord?.occurrence_morning_entry || false;
+    const occurrenceLunchExit = existingRecord?.occurrence_lunch_exit || false;
+    const occurrenceAfternoonEntry = existingRecord?.occurrence_afternoon_entry || false;
+    const occurrenceFinalExit = existingRecord?.occurrence_final_exit || false;
     
     // Salvar no banco
     // O novo modelo usa segundos diretamente, mas o banco ainda armazena alguns campos em segundos
@@ -286,8 +353,9 @@ export async function calculateDailyRecords(date: string) {
            expected_start, expected_end, delay_seconds, early_arrival_seconds, overtime_seconds, 
            early_exit_seconds, worked_minutes, expected_minutes, balance_seconds, interval_excess_seconds,
            atraso_clt_minutes, chegada_antec_clt_minutes, extra_clt_minutes, saida_antec_clt_minutes, saldo_clt_minutes, status,
-           occurrence_type, occurrence_hours_minutes, occurrence_duration)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+           occurrence_type, occurrence_hours_minutes, occurrence_duration,
+           occurrence_morning_entry, occurrence_lunch_exit, occurrence_afternoon_entry, occurrence_final_exit)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
         ON CONFLICT (employee_id, date) DO UPDATE SET
           first_entry = EXCLUDED.first_entry,
           last_exit = EXCLUDED.last_exit,
@@ -313,7 +381,11 @@ export async function calculateDailyRecords(date: string) {
           status = EXCLUDED.status,
           occurrence_type = COALESCE(processed_records.occurrence_type, EXCLUDED.occurrence_type),
           occurrence_hours_minutes = COALESCE(processed_records.occurrence_hours_minutes, EXCLUDED.occurrence_hours_minutes),
-          occurrence_duration = COALESCE(processed_records.occurrence_duration, EXCLUDED.occurrence_duration)
+          occurrence_duration = COALESCE(processed_records.occurrence_duration, EXCLUDED.occurrence_duration),
+          occurrence_morning_entry = COALESCE(processed_records.occurrence_morning_entry, EXCLUDED.occurrence_morning_entry),
+          occurrence_lunch_exit = COALESCE(processed_records.occurrence_lunch_exit, EXCLUDED.occurrence_lunch_exit),
+          occurrence_afternoon_entry = COALESCE(processed_records.occurrence_afternoon_entry, EXCLUDED.occurrence_afternoon_entry),
+          occurrence_final_exit = COALESCE(processed_records.occurrence_final_exit, EXCLUDED.occurrence_final_exit)
       `,
       [
         empId,
@@ -343,6 +415,10 @@ export async function calculateDailyRecords(date: string) {
         occurrenceType,
         occurrenceHoursMinutes,
         occurrenceDuration,
+        occurrenceMorningEntry, // $28
+        occurrenceLunchExit, // $29
+        occurrenceAfternoonEntry, // $30
+        occurrenceFinalExit, // $31
       ]
     );
   }

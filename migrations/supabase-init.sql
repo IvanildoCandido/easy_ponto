@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS work_schedules (
   morning_end text,
   afternoon_start text,
   afternoon_end text,
+  shift_type text CHECK (shift_type IN ('FULL_DAY', 'MORNING_ONLY', 'AFTERNOON_ONLY')),
+  break_minutes integer DEFAULT NULL,
   UNIQUE(employee_id, day_of_week)
 );
 
@@ -101,7 +103,7 @@ BEGIN
     ) THEN
         ALTER TABLE processed_records 
         ADD COLUMN occurrence_type TEXT 
-        CHECK (occurrence_type IN ('FERIADO', 'FALTA', 'FOLGA', 'ATESTADO', 'DECLARACAO'));
+        CHECK (occurrence_type IN ('FERIADO', 'FALTA', 'FOLGA', 'ATESTADO', 'DECLARACAO', 'ESQUECIMENTO_BATIDA'));
     END IF;
 END $$;
 

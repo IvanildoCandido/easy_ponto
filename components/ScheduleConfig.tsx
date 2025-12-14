@@ -17,6 +17,8 @@ interface Schedule {
   morning_end: string | null;
   afternoon_start: string | null;
   afternoon_end: string | null;
+  shift_type?: 'FULL_DAY' | 'MORNING_ONLY' | 'AFTERNOON_ONLY' | null;
+  break_minutes?: number | null;
 }
 
 const DAYS_OF_WEEK = [
@@ -35,26 +37,49 @@ function calculateDayHours(schedule: Schedule | undefined): number {
   if (!schedule) return 0;
   
   let totalMinutes = 0;
+  const shiftType = schedule.shift_type || 'FULL_DAY';
+  const breakMinutes = schedule.break_minutes || 0;
   
-  // Horas da manhã
-  if (schedule.morning_start && schedule.morning_end) {
-    const [startH, startM] = schedule.morning_start.split(':').map(Number);
-    const [endH, endM] = schedule.morning_end.split(':').map(Number);
-    const startTotalMinutes = startH * 60 + startM;
-    const endTotalMinutes = endH * 60 + endM;
-    totalMinutes += endTotalMinutes - startTotalMinutes;
+  if (shiftType === 'MORNING_ONLY') {
+    // Turno único manhã: entrada (morning_start) até saída final (afternoon_end), menos intervalo
+    if (schedule.morning_start && schedule.afternoon_end) {
+      const [startH, startM] = schedule.morning_start.split(':').map(Number);
+      const [endH, endM] = schedule.afternoon_end.split(':').map(Number);
+      const startTotalMinutes = startH * 60 + startM;
+      const endTotalMinutes = endH * 60 + endM;
+      totalMinutes = endTotalMinutes - startTotalMinutes - breakMinutes;
+    }
+  } else if (shiftType === 'AFTERNOON_ONLY') {
+    // Turno único tarde: entrada (afternoon_start) até saída final (afternoon_end), menos intervalo
+    if (schedule.afternoon_start && schedule.afternoon_end) {
+      const [startH, startM] = schedule.afternoon_start.split(':').map(Number);
+      const [endH, endM] = schedule.afternoon_end.split(':').map(Number);
+      const startTotalMinutes = startH * 60 + startM;
+      const endTotalMinutes = endH * 60 + endM;
+      totalMinutes = endTotalMinutes - startTotalMinutes - breakMinutes;
+    }
+  } else {
+    // Jornada completa (FULL_DAY): manhã + tarde
+    // Horas da manhã
+    if (schedule.morning_start && schedule.morning_end) {
+      const [startH, startM] = schedule.morning_start.split(':').map(Number);
+      const [endH, endM] = schedule.morning_end.split(':').map(Number);
+      const startTotalMinutes = startH * 60 + startM;
+      const endTotalMinutes = endH * 60 + endM;
+      totalMinutes += endTotalMinutes - startTotalMinutes;
+    }
+    
+    // Horas da tarde
+    if (schedule.afternoon_start && schedule.afternoon_end) {
+      const [startH, startM] = schedule.afternoon_start.split(':').map(Number);
+      const [endH, endM] = schedule.afternoon_end.split(':').map(Number);
+      const startTotalMinutes = startH * 60 + startM;
+      const endTotalMinutes = endH * 60 + endM;
+      totalMinutes += endTotalMinutes - startTotalMinutes;
+    }
   }
   
-  // Horas da tarde
-  if (schedule.afternoon_start && schedule.afternoon_end) {
-    const [startH, startM] = schedule.afternoon_start.split(':').map(Number);
-    const [endH, endM] = schedule.afternoon_end.split(':').map(Number);
-    const startTotalMinutes = startH * 60 + startM;
-    const endTotalMinutes = endH * 60 + endM;
-    totalMinutes += endTotalMinutes - startTotalMinutes;
-  }
-  
-  return totalMinutes;
+  return Math.max(0, totalMinutes); // Garantir que não seja negativo
 }
 
 /**
@@ -110,6 +135,8 @@ export default function ScheduleConfig() {
           morning_end: '12:00',
           afternoon_start: '13:00',
           afternoon_end: '17:00',
+          shift_type: 'FULL_DAY',
+          break_minutes: null,
         };
       });
       
@@ -146,6 +173,8 @@ export default function ScheduleConfig() {
             morning_end: schedule.morning_end || null,
             afternoon_start: schedule.afternoon_start || null,
             afternoon_end: schedule.afternoon_end || null,
+            shift_type: schedule.shift_type || 'FULL_DAY',
+            break_minutes: schedule.break_minutes || null,
           };
           
           const response = await fetch('/api/schedules', {
@@ -205,9 +234,13 @@ export default function ScheduleConfig() {
               <div className="space-y-4">
                 {DAYS_OF_WEEK.map(day => {
                   const schedule = schedules.find(s => s.day_of_week === day.value);
+                  const shiftType = schedule?.shift_type || 'FULL_DAY';
                   const hasMorning = !!(schedule?.morning_start && schedule?.morning_end);
                   const hasAfternoon = !!(schedule?.afternoon_start && schedule?.afternoon_end);
                   const dayHours = calculateDayHours(schedule);
+                  const isMorningOnly = shiftType === 'MORNING_ONLY';
+                  const isAfternoonOnly = shiftType === 'AFTERNOON_ONLY';
+                  const isFullDay = shiftType === 'FULL_DAY';
                   
                   return (
                     <div
@@ -223,97 +256,267 @@ export default function ScheduleConfig() {
                             </div>
                           )}
                         </div>
-                        <div className="flex gap-3 text-xs">
+                      </div>
+                      
+                      {/* Tipo de Turno */}
+                      <div className="mb-4">
+                        <label className="block text-xs font-semibold text-neutral-700 mb-2">
+                          Tipo de Turno
+                        </label>
+                        <div className="flex gap-4">
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
-                              type="checkbox"
-                              checked={hasMorning}
+                              type="radio"
+                              name={`shift_type_${day.value}`}
+                              value="FULL_DAY"
+                              checked={isFullDay}
                               onChange={(e) => {
-                                if (e.target.checked) {
+                                handleScheduleChange(day.value, 'shift_type', e.target.value);
+                                if (!hasMorning && !hasAfternoon) {
+                                  // Inicializar valores padrão se não houver nada
                                   handleScheduleChange(day.value, 'morning_start', '08:00');
                                   handleScheduleChange(day.value, 'morning_end', '12:00');
-                                } else {
-                                  handleScheduleChange(day.value, 'morning_start', null);
-                                  handleScheduleChange(day.value, 'morning_end', null);
+                                  handleScheduleChange(day.value, 'afternoon_start', '13:00');
+                                  handleScheduleChange(day.value, 'afternoon_end', '17:00');
                                 }
                               }}
-                              className="rounded w-4 h-4 text-primary-600 focus:ring-primary-500 border-neutral-300"
+                              className="w-4 h-4 text-primary-600 focus:ring-primary-500 border-neutral-300"
                             />
-                            <span className="text-neutral-700 font-medium">Trabalha Manhã</span>
+                            <span className="text-sm text-neutral-700">Jornada Completa</span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
-                              type="checkbox"
-                              checked={hasAfternoon}
+                              type="radio"
+                              name={`shift_type_${day.value}`}
+                              value="MORNING_ONLY"
+                              checked={isMorningOnly}
                               onChange={(e) => {
-                                if (e.target.checked) {
-                                  handleScheduleChange(day.value, 'afternoon_start', '13:00');
-                                  handleScheduleChange(day.value, 'afternoon_end', '17:00');
-                                } else {
-                                  handleScheduleChange(day.value, 'afternoon_start', null);
-                                  handleScheduleChange(day.value, 'afternoon_end', null);
+                                handleScheduleChange(day.value, 'shift_type', e.target.value);
+                                // Limpar campos de tarde e inicializar manhã
+                                handleScheduleChange(day.value, 'afternoon_start', null);
+                                handleScheduleChange(day.value, 'afternoon_end', null);
+                                if (!schedule?.morning_start) {
+                                  handleScheduleChange(day.value, 'morning_start', '06:00');
+                                }
+                                if (!schedule?.afternoon_end) {
+                                  // afternoon_end será usado como saída final do turno
+                                  handleScheduleChange(day.value, 'afternoon_end', '14:00');
+                                }
+                                handleScheduleChange(day.value, 'morning_end', null);
+                              }}
+                              className="w-4 h-4 text-primary-600 focus:ring-primary-500 border-neutral-300"
+                            />
+                            <span className="text-sm text-neutral-700">Turno Único Manhã</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`shift_type_${day.value}`}
+                              value="AFTERNOON_ONLY"
+                              checked={isAfternoonOnly}
+                              onChange={(e) => {
+                                handleScheduleChange(day.value, 'shift_type', e.target.value);
+                                // Limpar campos de manhã e inicializar tarde
+                                handleScheduleChange(day.value, 'morning_start', null);
+                                handleScheduleChange(day.value, 'morning_end', null);
+                                if (!schedule?.afternoon_start) {
+                                  handleScheduleChange(day.value, 'afternoon_start', '14:00');
+                                }
+                                if (!schedule?.afternoon_end) {
+                                  handleScheduleChange(day.value, 'afternoon_end', '22:00');
                                 }
                               }}
-                              className="rounded"
+                              className="w-4 h-4 text-primary-600 focus:ring-primary-500 border-neutral-300"
                             />
-                            <span className="text-neutral-700 font-medium">Trabalha Tarde</span>
+                            <span className="text-sm text-neutral-700">Turno Único Tarde</span>
                           </label>
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-neutral-700 mb-2">Entrada Manhã</label>
+
+                      {/* Intervalo (Break) - apenas para turnos únicos */}
+                      {(isMorningOnly || isAfternoonOnly) && (
+                        <div className="mb-4">
+                          <label className="block text-xs font-semibold text-neutral-700 mb-2">
+                            Intervalo (minutos) - Direito do funcionário
+                          </label>
                           <input
-                            type="time"
-                            value={schedule?.morning_start || ''}
+                            type="number"
+                            min="0"
+                            max="120"
+                            value={schedule?.break_minutes || 20}
                             onChange={(e) =>
-                              handleScheduleChange(day.value, 'morning_start', e.target.value || null)
+                              handleScheduleChange(day.value, 'break_minutes', e.target.value ? parseInt(e.target.value) : 20)
                             }
-                            disabled={!hasMorning}
-                            className="input text-sm py-2 disabled:bg-neutral-100 disabled:cursor-not-allowed"
-                            placeholder="--:--"
+                            className="input text-sm py-2 w-32"
+                            placeholder="20"
                           />
+                          <p className="text-xs text-neutral-500 mt-1">
+                            Minutos do intervalo obrigatório (padrão: 20 minutos)
+                          </p>
                         </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-neutral-700 mb-2">Saída Manhã (Almoço)</label>
-                          <input
-                            type="time"
-                            value={schedule?.morning_end || ''}
-                            onChange={(e) =>
-                              handleScheduleChange(day.value, 'morning_end', e.target.value || null)
-                            }
-                            disabled={!hasMorning}
-                            className="input text-sm py-2 disabled:bg-neutral-100 disabled:cursor-not-allowed"
-                            placeholder="--:--"
-                          />
+                      )}
+
+                      {/* Campos de horário */}
+                      {isFullDay && (
+                        <>
+                          <div className="flex gap-3 text-xs mb-4">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={hasMorning}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    handleScheduleChange(day.value, 'morning_start', '08:00');
+                                    handleScheduleChange(day.value, 'morning_end', '12:00');
+                                  } else {
+                                    handleScheduleChange(day.value, 'morning_start', null);
+                                    handleScheduleChange(day.value, 'morning_end', null);
+                                  }
+                                }}
+                                className="rounded w-4 h-4 text-primary-600 focus:ring-primary-500 border-neutral-300"
+                              />
+                              <span className="text-neutral-700 font-medium">Trabalha Manhã</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={hasAfternoon}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    handleScheduleChange(day.value, 'afternoon_start', '13:00');
+                                    handleScheduleChange(day.value, 'afternoon_end', '17:00');
+                                  } else {
+                                    handleScheduleChange(day.value, 'afternoon_start', null);
+                                    handleScheduleChange(day.value, 'afternoon_end', null);
+                                  }
+                                }}
+                                className="rounded w-4 h-4 text-primary-600 focus:ring-primary-500 border-neutral-300"
+                              />
+                              <span className="text-neutral-700 font-medium">Trabalha Tarde</span>
+                            </label>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                              <label className="block text-xs font-semibold text-neutral-700 mb-2">Entrada Manhã</label>
+                              <input
+                                type="time"
+                                value={schedule?.morning_start || ''}
+                                onChange={(e) =>
+                                  handleScheduleChange(day.value, 'morning_start', e.target.value || null)
+                                }
+                                disabled={!hasMorning}
+                                className="input text-sm py-2 disabled:bg-neutral-100 disabled:cursor-not-allowed"
+                                placeholder="--:--"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-neutral-700 mb-2">Saída Manhã (Almoço)</label>
+                              <input
+                                type="time"
+                                value={schedule?.morning_end || ''}
+                                onChange={(e) =>
+                                  handleScheduleChange(day.value, 'morning_end', e.target.value || null)
+                                }
+                                disabled={!hasMorning}
+                                className="input text-sm py-2 disabled:bg-neutral-100 disabled:cursor-not-allowed"
+                                placeholder="--:--"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-neutral-700 mb-2">Entrada Tarde</label>
+                              <input
+                                type="time"
+                                value={schedule?.afternoon_start || ''}
+                                onChange={(e) =>
+                                  handleScheduleChange(day.value, 'afternoon_start', e.target.value || null)
+                                }
+                                disabled={!hasAfternoon}
+                                className="input text-sm py-2 disabled:bg-neutral-100 disabled:cursor-not-allowed"
+                                placeholder="--:--"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-neutral-700 mb-2">Saída Tarde</label>
+                              <input
+                                type="time"
+                                value={schedule?.afternoon_end || ''}
+                                onChange={(e) =>
+                                  handleScheduleChange(day.value, 'afternoon_end', e.target.value || null)
+                                }
+                                disabled={!hasAfternoon}
+                                className="input text-sm py-2 disabled:bg-neutral-100 disabled:cursor-not-allowed"
+                                placeholder="--:--"
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Campos para Turno Único Manhã */}
+                      {isMorningOnly && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-semibold text-neutral-700 mb-2">Entrada</label>
+                            <input
+                              type="time"
+                              value={schedule?.morning_start || ''}
+                              onChange={(e) =>
+                                handleScheduleChange(day.value, 'morning_start', e.target.value || null)
+                              }
+                              className="input text-sm py-2"
+                              placeholder="--:--"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-neutral-700 mb-2">Saída Final</label>
+                            <input
+                              type="time"
+                              value={schedule?.afternoon_end || ''}
+                              onChange={(e) =>
+                                handleScheduleChange(day.value, 'afternoon_end', e.target.value || null)
+                              }
+                              className="input text-sm py-2"
+                              placeholder="--:--"
+                            />
+                            <p className="text-xs text-neutral-500 mt-1">
+                              Funcionário deve bater 4 vezes: Entrada, Saída Intervalo, Entrada pós-intervalo, Saída Final
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-neutral-700 mb-2">Entrada Tarde</label>
-                          <input
-                            type="time"
-                            value={schedule?.afternoon_start || ''}
-                            onChange={(e) =>
-                              handleScheduleChange(day.value, 'afternoon_start', e.target.value || null)
-                            }
-                            disabled={!hasAfternoon}
-                            className="input text-sm py-2 disabled:bg-neutral-100 disabled:cursor-not-allowed"
-                            placeholder="--:--"
-                          />
+                      )}
+
+                      {/* Campos para Turno Único Tarde */}
+                      {isAfternoonOnly && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-semibold text-neutral-700 mb-2">Entrada</label>
+                            <input
+                              type="time"
+                              value={schedule?.afternoon_start || ''}
+                              onChange={(e) =>
+                                handleScheduleChange(day.value, 'afternoon_start', e.target.value || null)
+                              }
+                              className="input text-sm py-2"
+                              placeholder="--:--"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-neutral-700 mb-2">Saída Final</label>
+                            <input
+                              type="time"
+                              value={schedule?.afternoon_end || ''}
+                              onChange={(e) =>
+                                handleScheduleChange(day.value, 'afternoon_end', e.target.value || null)
+                              }
+                              className="input text-sm py-2"
+                              placeholder="--:--"
+                            />
+                            <p className="text-xs text-neutral-500 mt-1">
+                              Funcionário deve bater 4 vezes: Entrada, Saída Intervalo, Entrada pós-intervalo, Saída Final
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-neutral-700 mb-2">Saída Tarde</label>
-                          <input
-                            type="time"
-                            value={schedule?.afternoon_end || ''}
-                            onChange={(e) =>
-                              handleScheduleChange(day.value, 'afternoon_end', e.target.value || null)
-                            }
-                            disabled={!hasAfternoon}
-                            className="input text-sm py-2 disabled:bg-neutral-100 disabled:cursor-not-allowed"
-                            placeholder="--:--"
-                          />
-                        </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })}

@@ -48,6 +48,8 @@ if (!useSupabase) {
       morning_end TEXT,
       afternoon_start TEXT,
       afternoon_end TEXT,
+      shift_type TEXT CHECK(shift_type IN ('FULL_DAY', 'MORNING_ONLY', 'AFTERNOON_ONLY')),
+      break_minutes INTEGER DEFAULT NULL,
       FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
       UNIQUE(employee_id, day_of_week)
     );
@@ -106,6 +108,32 @@ if (!useSupabase) {
     CREATE INDEX IF NOT EXISTS idx_time_records_employee_date ON time_records(employee_id, datetime);
     CREATE INDEX IF NOT EXISTS idx_processed_records_employee_date ON processed_records(employee_id, date);
   `);
+  
+  // Adicionar campos novos em work_schedules se não existirem (SQLite)
+  try {
+    sqliteDb.exec(`
+      ALTER TABLE work_schedules ADD COLUMN shift_type TEXT CHECK(shift_type IN ('FULL_DAY', 'MORNING_ONLY', 'AFTERNOON_ONLY'));
+    `);
+  } catch (e: any) {
+    // Coluna já existe, ignorar erro
+  }
+  
+  try {
+    sqliteDb.exec(`
+      ALTER TABLE work_schedules ADD COLUMN break_minutes INTEGER DEFAULT NULL;
+    `);
+  } catch (e: any) {
+    // Coluna já existe, ignorar erro
+  }
+  
+  // Atualizar registros existentes para FULL_DAY (compatibilidade retroativa)
+  try {
+    sqliteDb.exec(`
+      UPDATE work_schedules SET shift_type = 'FULL_DAY' WHERE shift_type IS NULL;
+    `);
+  } catch (e: any) {
+    // Ignorar erro
+  }
   
   // Adicionar campos novos se não existirem (SQLite)
   const newColumns = [
@@ -219,6 +247,13 @@ function convertPostgresToSqlite(sql: string, params?: any[]): { sql: string; pa
     convertedSql = convertedSql.replace(/::text/gi, '');
     convertedSql = convertedSql.replace(/::integer/gi, '');
     convertedSql = convertedSql.replace(/::bigint/gi, '');
+    convertedSql = convertedSql.replace(/::date/gi, '');
+    
+    // Converter EXTRACT(DOW FROM ...) do Postgres para strftime('%w', ...) do SQLite
+    convertedSql = convertedSql.replace(
+      /EXTRACT\(DOW FROM ([^)]+)\)/gi,
+      (match, dateExpr) => `CAST(strftime('%w', ${dateExpr}) AS INTEGER)`
+    );
     
     return { sql: convertedSql, params: convertedParams.length > 0 ? convertedParams : params };
   }

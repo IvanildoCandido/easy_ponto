@@ -72,8 +72,12 @@ export interface DaySummary {
 /**
  * Calcula horas trabalhadas (em segundos) pelos intervalos reais
  * IMPORTANTE: Calcula em segundos e NÃO trunca por turno
+ * Para turnos únicos com intervalo: soma os dois períodos (intervalo é direito, não descontar)
  */
-function calculateWorkedTime(punches: PunchTimes): {
+function calculateWorkedTime(
+  punches: PunchTimes,
+  singleShiftInfo?: { shiftType: 'MORNING_ONLY' | 'AFTERNOON_ONLY'; breakMinutes: number }
+): {
   morningSeconds: number;
   afternoonSeconds: number;
   totalSeconds: number;
@@ -81,6 +85,44 @@ function calculateWorkedTime(punches: PunchTimes): {
   let morningSeconds = 0;
   let afternoonSeconds = 0;
 
+  // TURNO ÚNICO: 4 batidas para o mesmo turno com intervalo
+  // Intervalo é direito do funcionário, então NÃO descontar do trabalhado
+  // Calcular: (batida2 - batida1) + (batida4 - batida3)
+  // IMPORTANTE: Para turno único, os campos são sempre:
+  // - morningEntry = 1ª batida (Entrada)
+  // - lunchExit = 2ª batida (Saída intervalo)
+  // - afternoonEntry = 3ª batida (Entrada pós-intervalo)
+  // - finalExit = 4ª batida (Saída final)
+  if (singleShiftInfo && punches.morningEntry && punches.lunchExit && punches.afternoonEntry && punches.finalExit) {
+    try {
+      // Primeiro período: entrada até saída intervalo (1ª batida até 2ª batida)
+      const entry1 = parse(punches.morningEntry, 'yyyy-MM-dd HH:mm:ss', new Date());
+      const exit1 = parse(punches.lunchExit, 'yyyy-MM-dd HH:mm:ss', new Date());
+      const period1 = calculateSecondsDifference(entry1, exit1);
+      
+      // Segundo período: entrada pós-intervalo até saída final (3ª batida até 4ª batida)
+      const entry2 = parse(punches.afternoonEntry, 'yyyy-MM-dd HH:mm:ss', new Date());
+      const exit2 = parse(punches.finalExit, 'yyyy-MM-dd HH:mm:ss', new Date());
+      const period2 = calculateSecondsDifference(entry2, exit2);
+      
+      // Somar os dois períodos (intervalo não é descontado do trabalhado)
+      const totalWorked = period1 + period2;
+      
+      // Para turno único, sempre usar morningSeconds (será interpretado como único turno)
+      // O tipo (MORNING_ONLY ou AFTERNOON_ONLY) é usado apenas para cálculo de horas previstas
+      morningSeconds = totalWorked;
+      
+      return {
+        morningSeconds,
+        afternoonSeconds: 0,
+        totalSeconds: totalWorked,
+      };
+    } catch (error) {
+      // Ignorar erro, continuar com lógica padrão
+    }
+  }
+
+  // JORNADA COMPLETA: lógica padrão (manhã + tarde separados)
   // Período manhã: saída almoço - entrada manhã
   if (punches.morningEntry && punches.lunchExit) {
     try {
@@ -149,8 +191,12 @@ function calculateWorkedTime(punches: PunchTimes): {
 
 /**
  * Calcula horas previstas (em segundos) pela escala do dia
+ * Para turnos únicos: desconta o intervalo das horas previstas (direito do funcionário)
  */
-function calculateExpectedTime(schedule: ScheduledTimes): {
+function calculateExpectedTime(
+  schedule: ScheduledTimes,
+  singleShiftInfo?: { shiftType: 'MORNING_ONLY' | 'AFTERNOON_ONLY'; breakMinutes: number }
+): {
   morningSeconds: number;
   afternoonSeconds: number;
   totalSeconds: number;
@@ -158,6 +204,28 @@ function calculateExpectedTime(schedule: ScheduledTimes): {
   let morningSeconds = 0;
   let afternoonSeconds = 0;
 
+  // TURNO ÚNICO: calcular de entrada até saída final, menos intervalo
+  if (singleShiftInfo) {
+    const breakSeconds = singleShiftInfo.breakMinutes * 60;
+    
+    if (singleShiftInfo.shiftType === 'MORNING_ONLY' && schedule.morningStart && schedule.afternoonEnd) {
+      // Turno único manhã: entrada (morningStart) até saída final (afternoonEnd), menos intervalo
+      const totalSeconds = timeToSeconds(schedule.afternoonEnd) - timeToSeconds(schedule.morningStart);
+      morningSeconds = Math.max(0, totalSeconds - breakSeconds);
+    } else if (singleShiftInfo.shiftType === 'AFTERNOON_ONLY' && schedule.afternoonStart && schedule.afternoonEnd) {
+      // Turno único tarde: entrada (afternoonStart) até saída final (afternoonEnd), menos intervalo
+      const totalSeconds = timeToSeconds(schedule.afternoonEnd) - timeToSeconds(schedule.afternoonStart);
+      afternoonSeconds = Math.max(0, totalSeconds - breakSeconds);
+    }
+    
+    return {
+      morningSeconds,
+      afternoonSeconds,
+      totalSeconds: morningSeconds + afternoonSeconds,
+    };
+  }
+
+  // JORNADA COMPLETA: lógica padrão (manhã + tarde separados)
   // Período manhã previsto
   if (schedule.morningStart && schedule.morningEnd) {
     morningSeconds = timeToSeconds(schedule.morningEnd) - timeToSeconds(schedule.morningStart);
@@ -349,12 +417,14 @@ function calculateIntervalExcess(
  * @param punches - Horários das batidas reais
  * @param schedule - Horários previstos
  * @param workDate - Data de trabalho (formato: 'yyyy-MM-dd')
+ * @param singleShiftInfo - Informações para turno único (horistas com intervalo de 20min)
  * @returns DaySummary com todos os cálculos e logs detalhados
  */
 export function computeDaySummaryV2(
   punches: PunchTimes,
   schedule: ScheduledTimes,
-  workDate: string
+  workDate: string,
+  singleShiftInfo?: { shiftType: 'MORNING_ONLY' | 'AFTERNOON_ONLY'; breakMinutes: number }
 ): DaySummary {
   const logs: string[] = [];
 
@@ -369,8 +439,9 @@ export function computeDaySummaryV2(
   // ============================================
   // (A) CALCULAR HORAS TRABALHADAS (intervalos reais, em segundos)
   // IMPORTANTE: Calcular em segundos e converter só no final usando função única
+  // Para turnos únicos: intervalo não é descontado (é direito do funcionário)
   // ============================================
-  const worked = calculateWorkedTime(punches);
+  const worked = calculateWorkedTime(punches, singleShiftInfo);
   // Converter para minutos usando função única (floor para minutos completos)
   const workedMinutes = toMinutesFloor(worked.totalSeconds);
   
@@ -381,8 +452,9 @@ export function computeDaySummaryV2(
 
   // ============================================
   // (B) CALCULAR HORAS PREVISTAS (pela escala, em segundos)
+  // Para turnos únicos: intervalo é descontado das horas previstas
   // ============================================
-  const expected = calculateExpectedTime(schedule);
+  const expected = calculateExpectedTime(schedule, singleShiftInfo);
   // Converter para minutos usando função única (floor para minutos completos)
   const expectedMinutes = toMinutesFloor(expected.totalSeconds);
   
@@ -434,7 +506,7 @@ export function computeDaySummaryV2(
   // (F) CALCULAR VALORES CLT (art. 58 §1º + Súmula 366 TST)
   // Tolerância: 5 min por marcação, máximo 10 min no dia (apenas início/fim da jornada)
   // ============================================
-  const { deltaStart, deltaEnd } = computeStartEndDeltas(punches, schedule, workDate);
+  const { deltaStart, deltaEnd } = computeStartEndDeltas(punches, schedule, workDate, singleShiftInfo);
   
   let atrasoCltMinutes = 0;
   let chegadaAntecCltMinutes = 0;
