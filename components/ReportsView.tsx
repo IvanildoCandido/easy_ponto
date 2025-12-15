@@ -48,6 +48,11 @@ interface Report {
   occurrence_final_exit?: boolean;
   shift_type?: 'FULL_DAY' | 'MORNING_ONLY' | 'AFTERNOON_ONLY' | null;
   break_minutes?: number | null;
+  // Indicadores de correção manual
+  is_manual_morning_entry?: boolean;
+  is_manual_lunch_exit?: boolean;
+  is_manual_afternoon_entry?: boolean;
+  is_manual_final_exit?: boolean;
 }
 
 export default function ReportsView() {
@@ -57,13 +62,28 @@ export default function ReportsView() {
   const [endDate, setEndDate] = useState('');
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showInternalMode, setShowInternalMode] = useState(false); // false = CLT (padrão), true = Controle Interno
   const [editingReport, setEditingReport] = useState<number | null>(null); // ID do registro sendo editado
   const [editingOccurrenceType, setEditingOccurrenceType] = useState<string>('');
   const [editingOccurrenceMorningEntry, setEditingOccurrenceMorningEntry] = useState<boolean>(false);
   const [editingOccurrenceLunchExit, setEditingOccurrenceLunchExit] = useState<boolean>(false);
   const [editingOccurrenceAfternoonEntry, setEditingOccurrenceAfternoonEntry] = useState<boolean>(false);
   const [editingOccurrenceFinalExit, setEditingOccurrenceFinalExit] = useState<boolean>(false);
+  const [isSavingOccurrence, setIsSavingOccurrence] = useState(false);
+  
+  // Estados para correção manual de batidas
+  const [editingManualPunch, setEditingManualPunch] = useState<number | null>(null); // ID do registro sendo editado
+  const [isSavingManualPunch, setIsSavingManualPunch] = useState(false);
+  const [editingManualMorningEntry, setEditingManualMorningEntry] = useState<string>('');
+  const [editingManualLunchExit, setEditingManualLunchExit] = useState<string>('');
+  const [editingManualAfternoonEntry, setEditingManualAfternoonEntry] = useState<string>('');
+  const [editingManualFinalExit, setEditingManualFinalExit] = useState<string>('');
+  const [editingManualReason, setEditingManualReason] = useState<string>('');
+  
+  // Estados para batidas originais do relógio
+  const [originalMorningEntry, setOriginalMorningEntry] = useState<string>('');
+  const [originalLunchExit, setOriginalLunchExit] = useState<string>('');
+  const [originalAfternoonEntry, setOriginalAfternoonEntry] = useState<string>('');
+  const [originalFinalExit, setOriginalFinalExit] = useState<string>('');
 
   const loadEmployees = async () => {
     try {
@@ -382,7 +402,7 @@ export default function ReportsView() {
       if (hasOccMorning && occLabel) {
         pdf.setTextColor(52, 73, 94); // Cinza escuro para ocorrência
         pdf.text(occLabel, xPos + 0.5, textY);
-      } else {
+          } else {
         pdf.setTextColor(0, 0, 0);
         const entryText = day.morningEntry && day.morningEntry !== '-' ? day.morningEntry : '-';
         pdf.text(String(entryText), xPos + 0.5, textY);
@@ -394,7 +414,7 @@ export default function ReportsView() {
       if (hasOccLunch && occLabel) {
         pdf.setTextColor(52, 73, 94);
         pdf.text(occLabel, xPos + 0.5, textY);
-      } else {
+        } else {
         pdf.setTextColor(0, 0, 0);
         const lunchText = day.lunchExit && day.lunchExit !== '-' ? day.lunchExit : '-';
         pdf.text(String(lunchText), xPos + 0.5, textY);
@@ -571,6 +591,9 @@ export default function ReportsView() {
     occurrenceAfternoonEntry?: boolean,
     occurrenceFinalExit?: boolean
   ) => {
+    if (isSavingOccurrence) return; // Prevenir múltiplos cliques
+    
+    setIsSavingOccurrence(true);
     try {
       const response = await fetch('/api/reports/update-occurrence', {
         method: 'PATCH',
@@ -617,6 +640,173 @@ export default function ReportsView() {
       setEditingReport(null);
     } catch (error) {
       alert('Erro ao atualizar ocorrência. Tente novamente.');
+    } finally {
+      setIsSavingOccurrence(false);
+    }
+  };
+
+  // Função para salvar correção manual de batidas
+  const saveManualPunchCorrection = async (report: Report) => {
+    if (isSavingManualPunch) return; // Prevenir múltiplos cliques
+    
+    setIsSavingManualPunch(true);
+    try {
+      // Converter horários para formato HH:mm (remover data se presente)
+      const formatTimeInput = (time: string | null): string | null => {
+        if (!time) return null;
+        // Se já estiver em formato HH:mm, retornar como está
+        if (/^\d{2}:\d{2}$/.test(time)) return time;
+        // Se estiver em formato datetime, extrair apenas HH:mm
+        const match = time.match(/(\d{2}:\d{2})/);
+        return match ? match[1] : null;
+      };
+
+      const response = await fetch('/api/manual-punch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          employeeId: report.employee_id,
+          date: report.date,
+          morningEntry: formatTimeInput(editingManualMorningEntry) || null,
+          lunchExit: formatTimeInput(editingManualLunchExit) || null,
+          afternoonEntry: formatTimeInput(editingManualAfternoonEntry) || null,
+          finalExit: formatTimeInput(editingManualFinalExit) || null,
+          correctionReason: editingManualReason || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        alert(error.error || 'Erro ao salvar correção manual');
+        return;
+      }
+
+      // Recarregar relatórios para refletir novos cálculos
+      await loadReports();
+
+      // Limpar estados
+      setEditingManualPunch(null);
+      setEditingManualMorningEntry('');
+      setEditingManualLunchExit('');
+      setEditingManualAfternoonEntry('');
+      setEditingManualFinalExit('');
+      setEditingManualReason('');
+      setOriginalMorningEntry('');
+      setOriginalLunchExit('');
+      setOriginalAfternoonEntry('');
+      setOriginalFinalExit('');
+    } catch (error) {
+      alert('Erro ao salvar correção manual. Tente novamente.');
+    } finally {
+      setIsSavingManualPunch(false);
+    }
+  };
+
+  // Função para remover correção manual de batidas
+  const removeManualPunchCorrection = async (report: Report) => {
+    if (!confirm('Tem certeza que deseja remover a correção manual? As batidas do arquivo serão usadas novamente.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/manual-punch?employeeId=${report.employee_id}&date=${report.date}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        alert(error.error || 'Erro ao remover correção manual');
+        return;
+      }
+
+      // Recarregar relatórios para refletir novos cálculos
+      await loadReports();
+
+      // Limpar estados
+      setEditingManualPunch(null);
+      setEditingManualMorningEntry('');
+      setEditingManualLunchExit('');
+      setEditingManualAfternoonEntry('');
+      setEditingManualFinalExit('');
+      setEditingManualReason('');
+      setOriginalMorningEntry('');
+      setOriginalLunchExit('');
+      setOriginalAfternoonEntry('');
+      setOriginalFinalExit('');
+      setOriginalMorningEntry('');
+      setOriginalLunchExit('');
+      setOriginalAfternoonEntry('');
+      setOriginalFinalExit('');
+    } catch (error) {
+      alert('Erro ao remover correção manual. Tente novamente.');
+    }
+  };
+
+  // Função para buscar correção manual existente e preencher o modal
+  const openManualPunchModal = async (report: Report) => {
+    setEditingManualPunch(report.id);
+    
+    // Buscar correção manual existente e batidas originais
+    try {
+      const response = await fetch(`/api/manual-punch?employeeId=${report.employee_id}&date=${report.date}`);
+      const data = await response.json();
+      
+      // Função auxiliar para formatar datetime para HH:mm
+      const formatToTime = (time: string | null): string => {
+        if (!time) return '';
+        const match = time.match(/(\d{2}:\d{2})/);
+        return match ? match[1] : '';
+      };
+      
+      // Preencher batidas originais do relógio
+      if (data.originalPunches) {
+        setOriginalMorningEntry(formatToTime(data.originalPunches.morning_entry));
+        setOriginalLunchExit(formatToTime(data.originalPunches.lunch_exit));
+        setOriginalAfternoonEntry(formatToTime(data.originalPunches.afternoon_entry));
+        setOriginalFinalExit(formatToTime(data.originalPunches.final_exit));
+      } else {
+        // Se não houver batidas originais, limpar
+        setOriginalMorningEntry('');
+        setOriginalLunchExit('');
+        setOriginalAfternoonEntry('');
+        setOriginalFinalExit('');
+      }
+      
+      if (data.data) {
+        // Preencher com dados existentes (formatar para HH:mm)
+        setEditingManualMorningEntry(formatToTime(data.data.morning_entry));
+        setEditingManualLunchExit(formatToTime(data.data.lunch_exit));
+        setEditingManualAfternoonEntry(formatToTime(data.data.afternoon_entry));
+        setEditingManualFinalExit(formatToTime(data.data.final_exit));
+        setEditingManualReason(data.data.correction_reason || '');
+      } else {
+        // Preencher com batidas atuais (formatar para HH:mm)
+        setEditingManualMorningEntry(formatToTime(report.morning_entry));
+        setEditingManualLunchExit(formatToTime(report.lunch_exit));
+        setEditingManualAfternoonEntry(formatToTime(report.afternoon_entry));
+        setEditingManualFinalExit(formatToTime(report.final_exit));
+        setEditingManualReason('');
+      }
+    } catch (error) {
+      // Em caso de erro, preencher com batidas atuais
+      const formatToTime = (time: string | null): string => {
+        if (!time) return '';
+        const match = time.match(/(\d{2}:\d{2})/);
+        return match ? match[1] : '';
+      };
+      
+      setEditingManualMorningEntry(formatToTime(report.morning_entry));
+      setEditingManualLunchExit(formatToTime(report.lunch_exit));
+      setEditingManualAfternoonEntry(formatToTime(report.afternoon_entry));
+      setEditingManualFinalExit(formatToTime(report.final_exit));
+      setEditingManualReason('');
+      // Limpar batidas originais em caso de erro
+      setOriginalMorningEntry('');
+      setOriginalLunchExit('');
+      setOriginalAfternoonEntry('');
+      setOriginalFinalExit('');
     }
   };
 
@@ -719,40 +909,16 @@ export default function ReportsView() {
           <h2 className="text-2xl font-bold text-neutral-900 mb-2">Relatórios de Ponto</h2>
           <p className="text-neutral-600">Visualize e exporte relatórios detalhados de ponto</p>
         </div>
-        <button
-          onClick={() => setShowInternalMode(!showInternalMode)}
-          className={`px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 ${
-            showInternalMode
-              ? 'bg-neutral-600 text-white hover:bg-neutral-700 shadow-sm'
-              : 'btn-primary'
-          }`}
-          title={showInternalMode ? 'Mostrar dados CLT (legal)' : 'Mostrar dados de controle interno'}
-        >
-          {showInternalMode ? '📊 Modo CLT' : '⚙️ Controle Interno'}
-        </button>
       </div>
       
-      {showInternalMode && (
-        <div className="p-4 bg-accent-50 border-2 border-accent-200 rounded-xl">
-          <p className="text-sm text-accent-800 flex items-start space-x-2">
-            <svg className="w-5 h-5 text-accent-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span><strong>Modo Controle Interno:</strong> Exibindo dados gerenciais (horas trabalhadas vs previstas). Para dados legais CLT, clique em &quot;📊 Modo CLT&quot;.</span>
-          </p>
-        </div>
-      )}
-      
-      {!showInternalMode && (
-        <div className="p-4 bg-primary-50 border-2 border-primary-200 rounded-xl">
-          <p className="text-sm text-primary-800 flex items-start space-x-2">
-            <svg className="w-5 h-5 text-primary-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-            <span><strong>Modo CLT (Legal):</strong> Exibindo dados conforme art. 58 §1º CLT + Súmula 366 TST. Para dados de controle interno, clique em &quot;⚙️ Controle Interno&quot;.</span>
-          </p>
-        </div>
-      )}
+      <div className="p-4 bg-primary-50 border-2 border-primary-200 rounded-xl">
+        <p className="text-sm text-primary-800 flex items-start space-x-2">
+          <svg className="w-5 h-5 text-primary-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <span><strong>Modo CLT (Legal):</strong> Exibindo dados conforme art. 58 §1º CLT + Súmula 366 TST.</span>
+        </p>
+      </div>
 
       <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
@@ -855,38 +1021,24 @@ export default function ReportsView() {
                 <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider min-w-[120px]">
                   Funcionário
                 </th>
-                {showInternalMode ? (
-                  <>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                      H. Trab.
+                {/* Headers dinâmicos: verificar se há turno único nos reports */}
+                {reports.length > 0 && (reports[0].shift_type === 'MORNING_ONLY' || reports[0].shift_type === 'AFTERNOON_ONLY') ? (
+                      <>
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                          Entrada
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                      H. Prev.
+                          S. Intervalo
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                      Saldo
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                          E. Pós-Int.
+                    </th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                          Saída Final
                     </th>
                   </>
                 ) : (
                   <>
-                    {/* Headers dinâmicos: verificar se há turno único nos reports */}
-                    {reports.length > 0 && (reports[0].shift_type === 'MORNING_ONLY' || reports[0].shift_type === 'AFTERNOON_ONLY') ? (
-                      <>
-                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                          Entrada
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                          S. Intervalo
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                          E. Pós-Int.
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                          Saída Final
-                        </th>
-                      </>
-                    ) : (
-                      <>
                         <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
                           E. Manhã
                         </th>
@@ -910,8 +1062,6 @@ export default function ReportsView() {
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                       SALDO_CLT
                     </th>
-                  </>
-                )}
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-neutral-200">
@@ -941,94 +1091,100 @@ export default function ReportsView() {
                       )}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-xs">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingReport(report.id);
-                          setEditingOccurrenceType(report.occurrence_type || '');
-                          setEditingOccurrenceMorningEntry(report.occurrence_morning_entry || false);
-                          setEditingOccurrenceLunchExit(report.occurrence_lunch_exit || false);
-                          setEditingOccurrenceAfternoonEntry(report.occurrence_afternoon_entry || false);
-                          setEditingOccurrenceFinalExit(report.occurrence_final_exit || false);
-                        }}
-                        className="text-primary-600 hover:text-primary-800 transition-colors p-1 rounded hover:bg-primary-50"
-                        title="Editar ocorrência"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingReport(report.id);
+                            setEditingOccurrenceType(report.occurrence_type || '');
+                            setEditingOccurrenceMorningEntry(report.occurrence_morning_entry || false);
+                            setEditingOccurrenceLunchExit(report.occurrence_lunch_exit || false);
+                            setEditingOccurrenceAfternoonEntry(report.occurrence_afternoon_entry || false);
+                            setEditingOccurrenceFinalExit(report.occurrence_final_exit || false);
+                          }}
+                          className="text-primary-600 hover:text-primary-800 transition-colors p-1 rounded hover:bg-primary-50"
+                          title="Editar ocorrência"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openManualPunchModal(report);
+                          }}
+                          className="text-orange-600 hover:text-orange-800 transition-colors p-1 rounded hover:bg-orange-50"
+                          title="Corrigir batidas manualmente"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                     <td className="px-3 py-3 text-xs text-neutral-900">
                       <div className="font-medium truncate">{report.employee_name}</div>
                       <div className="text-[10px] text-neutral-500 truncate">{report.department}</div>
                     </td>
-                    {showInternalMode ? (
-                      <>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900 font-medium">
-                          {report.worked_hours}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-700">
-                          {report.expected_hours || '-'}
-                        </td>
+                    {/* Para turnos únicos, os campos são sempre na ordem: 1ª=Entrada, 2ª=Saída intervalo, 3ª=Entrada pós-intervalo, 4ª=Saída final */}
+                        {isSingleShift ? (
+                          <>
+                            {/* Coluna 1: Entrada (1ª batida) */}
                         <td className="px-3 py-3 whitespace-nowrap text-xs">
-                          <div className={`font-semibold ${balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-neutral-600'}`}>
-                            {formatMinutes(Math.abs(balance), true)}
-                            {balance > 0 ? '+' : balance < 0 ? '-' : ''}
-                          </div>
-                          <div className="text-[10px] text-neutral-500">
-                            {workedMinutes}-{expectedMinutes}
-                          </div>
+                              {report.occurrence_morning_entry && report.occurrence_type ? (
+                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                            </span>
+                          ) : (
+                                <span className={`text-neutral-900 ${report.is_manual_morning_entry ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_morning_entry ? 'Batida corrigida manualmente' : ''}>
+                                  {report.is_manual_morning_entry && '🔧 '}
+                                  {formatTime(report.morning_entry)}
+                                </span>
+                          )}
+                        </td>
+                            {/* Coluna 2: Saída Intervalo (2ª batida) */}
+                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                              {report.occurrence_lunch_exit && report.occurrence_type ? (
+                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                            </span>
+                          ) : (
+                                <span className={`text-neutral-900 ${report.is_manual_lunch_exit ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_lunch_exit ? 'Batida corrigida manualmente' : ''}>
+                                  {report.is_manual_lunch_exit && '🔧 '}
+                                  {formatTime(report.lunch_exit)}
+                                </span>
+                          )}
+                        </td>
+                            {/* Coluna 3: Entrada Pós-Intervalo (3ª batida) */}
+                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                              {report.occurrence_afternoon_entry && report.occurrence_type ? (
+                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                            </span>
+                          ) : (
+                                <span className={`text-neutral-900 ${report.is_manual_afternoon_entry ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_afternoon_entry ? 'Batida corrigida manualmente' : ''}>
+                                  {report.is_manual_afternoon_entry && '🔧 '}
+                                  {formatTime(report.afternoon_entry)}
+                                </span>
+                          )}
+                        </td>
+                            {/* Coluna 4: Saída Final (4ª batida) */}
+                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                              {report.occurrence_final_exit && report.occurrence_type ? (
+                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                            </span>
+                          ) : (
+                                <span className={`text-neutral-900 ${report.is_manual_final_exit ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_final_exit ? 'Batida corrigida manualmente' : ''}>
+                                  {report.is_manual_final_exit && '🔧 '}
+                                  {formatTime(report.final_exit)}
+                                </span>
+                          )}
                         </td>
                       </>
                     ) : (
                       <>
-                        {/* Para turnos únicos, os campos são sempre na ordem: 1ª=Entrada, 2ª=Saída intervalo, 3ª=Entrada pós-intervalo, 4ª=Saída final */}
-                        {isSingleShift ? (
-                          <>
-                            {/* Coluna 1: Entrada (1ª batida) */}
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.occurrence_morning_entry && report.occurrence_type ? (
-                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                                  {getOccurrenceTypeLabel(report.occurrence_type)}
-                                </span>
-                              ) : (
-                                <span className="text-neutral-900">{formatTime(report.morning_entry)}</span>
-                              )}
-                            </td>
-                            {/* Coluna 2: Saída Intervalo (2ª batida) */}
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.occurrence_lunch_exit && report.occurrence_type ? (
-                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                                  {getOccurrenceTypeLabel(report.occurrence_type)}
-                                </span>
-                              ) : (
-                                <span className="text-neutral-900">{formatTime(report.lunch_exit)}</span>
-                              )}
-                            </td>
-                            {/* Coluna 3: Entrada Pós-Intervalo (3ª batida) */}
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.occurrence_afternoon_entry && report.occurrence_type ? (
-                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                                  {getOccurrenceTypeLabel(report.occurrence_type)}
-                                </span>
-                              ) : (
-                                <span className="text-neutral-900">{formatTime(report.afternoon_entry)}</span>
-                              )}
-                            </td>
-                            {/* Coluna 4: Saída Final (4ª batida) */}
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.occurrence_final_exit && report.occurrence_type ? (
-                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                                  {getOccurrenceTypeLabel(report.occurrence_type)}
-                                </span>
-                              ) : (
-                                <span className="text-neutral-900">{formatTime(report.final_exit)}</span>
-                              )}
-                            </td>
-                          </>
-                        ) : (
-                          <>
                             {/* Jornada completa: manter mapeamento original */}
                             <td className="px-3 py-3 whitespace-nowrap text-xs">
                               {report.occurrence_morning_entry && report.occurrence_type ? (
@@ -1036,7 +1192,10 @@ export default function ReportsView() {
                                   {getOccurrenceTypeLabel(report.occurrence_type)}
                                 </span>
                               ) : (
-                                <span className="text-neutral-900">{formatTime(report.morning_entry)}</span>
+                                <span className={`text-neutral-900 ${report.is_manual_morning_entry ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_morning_entry ? 'Batida corrigida manualmente' : ''}>
+                                  {report.is_manual_morning_entry && '🔧 '}
+                                  {formatTime(report.morning_entry)}
+                                </span>
                               )}
                             </td>
                             <td className="px-3 py-3 whitespace-nowrap text-xs">
@@ -1045,7 +1204,10 @@ export default function ReportsView() {
                                   {getOccurrenceTypeLabel(report.occurrence_type)}
                                 </span>
                               ) : (
-                                <span className="text-neutral-900">{formatTime(report.lunch_exit)}</span>
+                                <span className={`text-neutral-900 ${report.is_manual_lunch_exit ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_lunch_exit ? 'Batida corrigida manualmente' : ''}>
+                                  {report.is_manual_lunch_exit && '🔧 '}
+                                  {formatTime(report.lunch_exit)}
+                                </span>
                               )}
                             </td>
                             <td className="px-3 py-3 whitespace-nowrap text-xs">
@@ -1054,7 +1216,10 @@ export default function ReportsView() {
                                   {getOccurrenceTypeLabel(report.occurrence_type)}
                                 </span>
                               ) : (
-                                <span className="text-neutral-900">{formatTime(report.afternoon_entry)}</span>
+                                <span className={`text-neutral-900 ${report.is_manual_afternoon_entry ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_afternoon_entry ? 'Batida corrigida manualmente' : ''}>
+                                  {report.is_manual_afternoon_entry && '🔧 '}
+                                  {formatTime(report.afternoon_entry)}
+                                </span>
                               )}
                             </td>
                             <td className="px-3 py-3 whitespace-nowrap text-xs">
@@ -1063,42 +1228,43 @@ export default function ReportsView() {
                                   {getOccurrenceTypeLabel(report.occurrence_type)}
                                 </span>
                               ) : (
-                                <span className="text-neutral-900">{formatTime(report.final_exit)}</span>
+                                <span className={`text-neutral-900 ${report.is_manual_final_exit ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_final_exit ? 'Batida corrigida manualmente' : ''}>
+                                  {report.is_manual_final_exit && '🔧 '}
+                                  {formatTime(report.final_exit)}
+                                </span>
                               )}
                             </td>
                           </>
                         )}
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
-                          {report.atraso_clt_minutes && report.atraso_clt_minutes > 0 ? (
-                            <span className="text-red-600 font-medium" title="Atraso CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
-                              {formatMinutes(report.atraso_clt_minutes)}
-                            </span>
-                          ) : (
-                            '-'
-                          )}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
-                          {report.extra_clt_minutes && report.extra_clt_minutes > 0 ? (
-                            <span className="text-blue-600 font-medium" title="Hora extra CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
-                              {formatMinutes(report.extra_clt_minutes)}
-                            </span>
-                          ) : (
-                            '-'
-                          )}
-                        </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-xs">
-                          {(() => {
-                            const saldoClt = report.saldo_clt_minutes || 0;
-                            return (
-                              <div className={`font-semibold ${saldoClt > 0 ? 'text-green-600' : saldoClt < 0 ? 'text-red-600' : 'text-neutral-600'}`}>
-                                {formatMinutes(Math.abs(saldoClt), true)}
-                                {saldoClt > 0 ? '+' : saldoClt < 0 ? '-' : ''}
-                              </div>
-                            );
-                          })()}
-                        </td>
-                      </>
-                    )}
+                    <td className="px-3 py-3 whitespace-nowrap text-xs">
+                      {report.atraso_clt_minutes && report.atraso_clt_minutes > 0 ? (
+                        <span className="text-red-600 font-medium" title="Atraso CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
+                          {formatMinutes(report.atraso_clt_minutes)}
+                        </span>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-xs">
+                      {report.extra_clt_minutes && report.extra_clt_minutes > 0 ? (
+                        <span className="text-blue-600 font-medium" title="Hora extra CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
+                          {formatMinutes(report.extra_clt_minutes)}
+                        </span>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-xs">
+                      {(() => {
+                        const saldoClt = report.saldo_clt_minutes || 0;
+                        return (
+                          <div className={`font-semibold ${saldoClt > 0 ? 'text-green-600' : saldoClt < 0 ? 'text-red-600' : 'text-neutral-600'}`}>
+                            {formatMinutes(Math.abs(saldoClt), true)}
+                            {saldoClt > 0 ? '+' : saldoClt < 0 ? '-' : ''}
+                          </div>
+                        );
+                      })()}
+                    </td>
                   </tr>
                 );
               })}
@@ -1111,57 +1277,26 @@ export default function ReportsView() {
                 <td className="px-3 py-3 text-xs text-neutral-700">
                   {/* Coluna Funcionário - vazia nos totais */}
                 </td>
-                {showInternalMode ? (
-                  <>
-                    <td className="px-3 py-3 text-xs text-neutral-900 font-semibold">
-                      {formatWorkedHours(reports.reduce((sum, r) => sum + (r.worked_minutes || 0), 0))}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-neutral-700 font-semibold">
-                      {formatWorkedHours(reports.reduce((sum, r) => sum + (r.expected_minutes || 0), 0))}
-                    </td>
-                    <td className="px-3 py-3 text-xs">
-                      {(() => {
-                        const totalBalance = reports.reduce(
-                          (sum, r) => {
-                            const worked = r.worked_minutes || 0;
-                            const expected = r.expected_minutes || 0;
-                            return sum + (worked - expected);
-                          },
-                          0
-                        );
-                        return (
-                          <span className={`font-semibold ${totalBalance > 0 ? 'text-green-600' : totalBalance < 0 ? 'text-red-600' : 'text-neutral-600'}`}>
-                            {formatMinutes(Math.abs(totalBalance), true)}
-                            {totalBalance > 0 ? '+' : totalBalance < 0 ? '-' : ''}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td colSpan={4} className="px-3 py-3 text-xs text-neutral-700">
-                      {/* E. Manhã, S. Alm., E. Tarde, S. Tarde - vazias nos totais */}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-red-600">
-                      {formatMinutes(reports.reduce((sum, r) => sum + (r.atraso_clt_minutes || 0), 0))}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-blue-600">
-                      {formatMinutes(reports.reduce((sum, r) => sum + (r.extra_clt_minutes || 0), 0))}
-                    </td>
-                    <td className="px-3 py-3 text-xs">
-                      {(() => {
-                        const totalSaldoClt = reports.reduce((sum, r) => sum + (r.saldo_clt_minutes || 0), 0);
-                        return (
-                          <span className={`font-semibold ${totalSaldoClt > 0 ? 'text-green-600' : totalSaldoClt < 0 ? 'text-red-600' : 'text-neutral-600'}`}>
-                            {formatMinutes(Math.abs(totalSaldoClt), true)}
-                            {totalSaldoClt > 0 ? '+' : totalSaldoClt < 0 ? '-' : ''}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                  </>
-                )}
+                <td colSpan={4} className="px-3 py-3 text-xs text-neutral-700">
+                  {/* E. Manhã, S. Alm., E. Tarde, S. Tarde - vazias nos totais */}
+                </td>
+                <td className="px-3 py-3 text-xs text-red-600">
+                  {formatMinutes(reports.reduce((sum, r) => sum + (r.atraso_clt_minutes || 0), 0))}
+                </td>
+                <td className="px-3 py-3 text-xs text-blue-600">
+                  {formatMinutes(reports.reduce((sum, r) => sum + (r.extra_clt_minutes || 0), 0))}
+                </td>
+                <td className="px-3 py-3 text-xs">
+                  {(() => {
+                    const totalSaldoClt = reports.reduce((sum, r) => sum + (r.saldo_clt_minutes || 0), 0);
+                    return (
+                      <span className={`font-semibold ${totalSaldoClt > 0 ? 'text-green-600' : totalSaldoClt < 0 ? 'text-red-600' : 'text-neutral-600'}`}>
+                        {formatMinutes(Math.abs(totalSaldoClt), true)}
+                        {totalSaldoClt > 0 ? '+' : totalSaldoClt < 0 ? '-' : ''}
+                      </span>
+                    );
+                  })()}
+                </td>
               </tr>
             </tfoot>
           </table>
@@ -1179,6 +1314,7 @@ export default function ReportsView() {
             <div
               className="absolute inset-0 bg-black/50 backdrop-blur-sm"
               onClick={() => {
+                if (isSavingOccurrence) return; // Prevenir fechamento durante salvamento
                 setEditingReport(null);
                 setEditingOccurrenceType('');
                 setEditingOccurrenceMorningEntry(false);
@@ -1200,6 +1336,7 @@ export default function ReportsView() {
                 </h3>
                 <button
                   onClick={() => {
+                    if (isSavingOccurrence) return; // Prevenir fechamento durante salvamento
                     setEditingReport(null);
                     setEditingOccurrenceType('');
                     setEditingOccurrenceMorningEntry(false);
@@ -1207,7 +1344,8 @@ export default function ReportsView() {
                     setEditingOccurrenceAfternoonEntry(false);
                     setEditingOccurrenceFinalExit(false);
                   }}
-                  className="text-neutral-400 hover:text-neutral-600 transition-colors"
+                  disabled={isSavingOccurrence}
+                  className="text-neutral-400 hover:text-neutral-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1327,6 +1465,7 @@ export default function ReportsView() {
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-neutral-200">
                 <button
                   onClick={() => {
+                    if (isSavingOccurrence) return; // Prevenir fechamento durante salvamento
                     setEditingReport(null);
                     setEditingOccurrenceType('');
                     setEditingOccurrenceMorningEntry(false);
@@ -1334,7 +1473,8 @@ export default function ReportsView() {
                     setEditingOccurrenceAfternoonEntry(false);
                     setEditingOccurrenceFinalExit(false);
                   }}
-                  className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white border border-neutral-300 rounded-lg hover:bg-neutral-50 transition-colors"
+                  disabled={isSavingOccurrence}
+                  className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white border border-neutral-300 rounded-lg hover:bg-neutral-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancelar
                 </button>
@@ -1354,16 +1494,270 @@ export default function ReportsView() {
                       finalAfternoonEntry,
                       finalFinalExit
                     );
-                    setEditingOccurrenceType('');
-                    setEditingOccurrenceMorningEntry(false);
-                    setEditingOccurrenceLunchExit(false);
-                    setEditingOccurrenceAfternoonEntry(false);
-                    setEditingOccurrenceFinalExit(false);
                   }}
-                  className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
+                  disabled={isSavingOccurrence}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Salvar
+                  {isSavingOccurrence && (
+                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  )}
+                  {isSavingOccurrence ? 'Salvando...' : 'Salvar'}
                 </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal para corrigir batidas manualmente */}
+      {editingManualPunch && (() => {
+        const report = reports.find(r => r.id === editingManualPunch);
+        if (!report) return null;
+
+        // Detectar se é turno único (horista) para labels dinâmicos
+        const isSingleShift = report.shift_type === 'MORNING_ONLY' || report.shift_type === 'AFTERNOON_ONLY';
+        const punchLabels = isSingleShift ? {
+          morning: 'Entrada',
+          lunch: 'Saída Intervalo',
+          afternoon: 'Entrada Pós-Intervalo',
+          final: 'Saída Final'
+        } : {
+          morning: 'Entrada Manhã',
+          lunch: 'Saída Almoço',
+          afternoon: 'Entrada Tarde',
+          final: 'Saída Final'
+        };
+
+        // Verificar se já existe correção manual
+        const hasManualCorrection = report.is_manual_morning_entry || report.is_manual_lunch_exit || 
+                                    report.is_manual_afternoon_entry || report.is_manual_final_exit;
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => {
+                if (isSavingManualPunch) return; // Prevenir fechamento durante salvamento
+                setEditingManualPunch(null);
+                setEditingManualMorningEntry('');
+                setEditingManualLunchExit('');
+                setEditingManualAfternoonEntry('');
+                setEditingManualFinalExit('');
+                setEditingManualReason('');
+                setOriginalMorningEntry('');
+                setOriginalLunchExit('');
+                setOriginalAfternoonEntry('');
+                setOriginalFinalExit('');
+              }}
+            />
+            
+            {/* Modal Content */}
+            <div
+              className="relative bg-white rounded-xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-neutral-900">
+                  {hasManualCorrection ? 'Editar Correção Manual' : 'Corrigir Batidas Manualmente'}
+                </h3>
+                <button
+                  onClick={() => {
+                    if (isSavingManualPunch) return; // Prevenir fechamento durante salvamento
+                    setEditingManualPunch(null);
+                    setEditingManualMorningEntry('');
+                    setEditingManualLunchExit('');
+                    setEditingManualAfternoonEntry('');
+                    setEditingManualFinalExit('');
+                    setEditingManualReason('');
+                    setOriginalMorningEntry('');
+                    setOriginalLunchExit('');
+                    setOriginalAfternoonEntry('');
+                    setOriginalFinalExit('');
+                  }}
+                  disabled={isSavingManualPunch}
+                  className="text-neutral-400 hover:text-neutral-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Informações do registro */}
+              <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <p className="text-sm text-neutral-600">
+                  <span className="font-medium">Funcionário:</span> {report.employee_name}
+                </p>
+                <p className="text-sm text-neutral-600">
+                  <span className="font-medium">Data:</span> {formatDate(report.date)}
+                </p>
+                {hasManualCorrection && (
+                  <p className="text-xs text-orange-600 mt-2">
+                    ⚠️ Este registro já possui correção manual. Ao salvar, a correção será atualizada.
+                  </p>
+                )}
+              </div>
+
+              {/* Batidas originais do relógio (somente leitura) */}
+              {(originalMorningEntry || originalLunchExit || originalAfternoonEntry || originalFinalExit) && (
+                <div className="mb-4 p-3 bg-neutral-50 border border-neutral-200 rounded-lg">
+                  <h4 className="text-sm font-semibold text-neutral-700 mb-3">
+                    📋 Batidas Originais do Relógio
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-neutral-500">{punchLabels.morning}:</span>
+                      <span className="ml-2 font-mono text-neutral-700">
+                        {originalMorningEntry || '-'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500">{punchLabels.lunch}:</span>
+                      <span className="ml-2 font-mono text-neutral-700">
+                        {originalLunchExit || '-'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500">{punchLabels.afternoon}:</span>
+                      <span className="ml-2 font-mono text-neutral-700">
+                        {originalAfternoonEntry || '-'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500">{punchLabels.final}:</span>
+                      <span className="ml-2 font-mono text-neutral-700">
+                        {originalFinalExit || '-'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Campos de horário corrigidos */}
+              <div className="space-y-4 mb-4">
+                <h4 className="text-sm font-semibold text-orange-700 mb-3">
+                  ✏️ Horários Corrigidos
+                </h4>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    {punchLabels.morning}
+                  </label>
+                  <input
+                    type="time"
+                    value={editingManualMorningEntry}
+                    onChange={(e) => setEditingManualMorningEntry(e.target.value)}
+                    className="w-full text-sm border-2 border-orange-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    {punchLabels.lunch}
+                  </label>
+                  <input
+                    type="time"
+                    value={editingManualLunchExit}
+                    onChange={(e) => setEditingManualLunchExit(e.target.value)}
+                    className="w-full text-sm border-2 border-orange-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    {punchLabels.afternoon}
+                  </label>
+                  <input
+                    type="time"
+                    value={editingManualAfternoonEntry}
+                    onChange={(e) => setEditingManualAfternoonEntry(e.target.value)}
+                    className="w-full text-sm border-2 border-orange-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    {punchLabels.final}
+                  </label>
+                  <input
+                    type="time"
+                    value={editingManualFinalExit}
+                    onChange={(e) => setEditingManualFinalExit(e.target.value)}
+                    className="w-full text-sm border-2 border-orange-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              {/* Motivo da correção (opcional) */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Motivo da Correção (opcional)
+                </label>
+                <textarea
+                  value={editingManualReason}
+                  onChange={(e) => setEditingManualReason(e.target.value)}
+                  placeholder="Ex: Funcionária se enrolou e bateu o ponto errado"
+                  rows={3}
+                  className="w-full text-sm border border-neutral-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
+                />
+              </div>
+
+              {/* Informação */}
+              <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-700">
+                  💡 <strong>Importante:</strong> As batidas corrigidas manualmente terão prioridade sobre as batidas do arquivo. 
+                  Mesmo que um novo arquivo seja carregado, as correções manuais serão preservadas.
+                </p>
+              </div>
+
+              {/* Botões de ação */}
+              <div className="flex items-center justify-between gap-3">
+                {hasManualCorrection && (
+                  <button
+                    onClick={() => removeManualPunchCorrection(report)}
+                    className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                  >
+                    Remover Correção
+                  </button>
+                )}
+                <div className="flex gap-3 ml-auto">
+                  <button
+                    onClick={() => {
+                      if (isSavingManualPunch) return; // Prevenir fechamento durante salvamento
+                      setEditingManualPunch(null);
+                      setEditingManualMorningEntry('');
+                      setEditingManualLunchExit('');
+                      setEditingManualAfternoonEntry('');
+                      setEditingManualFinalExit('');
+                      setEditingManualReason('');
+                      setOriginalMorningEntry('');
+                      setOriginalLunchExit('');
+                      setOriginalAfternoonEntry('');
+                      setOriginalFinalExit('');
+                    }}
+                    disabled={isSavingManualPunch}
+                    className="px-4 py-2 text-sm font-medium text-neutral-700 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => saveManualPunchCorrection(report)}
+                    disabled={isSavingManualPunch}
+                    className="px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isSavingManualPunch && (
+                      <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    )}
+                    {isSavingManualPunch ? 'Salvando...' : 'Salvar Correção'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -1,116 +1,223 @@
 /**
- * Lógica de tolerância CLT (art. 58 §1º + Súmula 366 TST)
+ * Lógica de tolerância CLT (art. 58 §1º)
  * 
- * REGRA LEGAL:
- * - Tolerância de 5 minutos por evento de JORNADA (zona neutra)
- * - Teto diário de 10 minutos de tolerância total
- * - Se exceder 10 min no dia, o excedente deve ser computado
+ * REGRA LEGAL (Art. 58, § 1º da CLT):
+ * - Tolerância de 5 minutos por batida (entrada ou saída)
+ * - Se diferença <= 5 minutos (para mais ou para menos), considera como 0
+ * - Se diferença > 5 minutos, considera o tempo TOTAL da diferença (não apenas o excedente)
+ * - Teto diário: Se soma total das variações estiver entre -10 e +10 minutos, zera o saldo do dia
+ * - Se ultrapassar o teto, considera o valor TOTAL calculado
+ * 
+ * Tratamento do Resultado Final:
+ * - Banco de Horas: Faz netting (soma saldo líquido: positivos - negativos)
+ * - Pagamento em Folha: Separa extras (para pagamento com adicional) de faltas/atrasos (para desconto)
  */
 
 import { calculateSecondsDifference, toMinutesFloor } from './time-utils';
 import { parse } from 'date-fns';
 
-const TOLERANCE_PER_EVENT_MINUTES = 5;
-const TOLERANCE_DAILY_CAP_MINUTES = 10;
+// Constantes conforme Art. 58 §1º CLT
+const TOLERANCE_PER_PUNCH_MINUTES = 5; // 5 minutos por batida
+const TOLERANCE_DAILY_RANGE_MINUTES = 10; // -10 a +10 minutos (teto diário)
 
+/**
+ * Tipo de compensação do funcionário
+ */
+export type CompensationType = 'BANCO_DE_HORAS' | 'PAGAMENTO_FOLHA';
+
+/**
+ * Resultado do cálculo CLT após aplicar tolerâncias
+ */
 export interface CltToleranceResult {
-  atrasoCltMinutes: number;
-  chegadaAntecCltMinutes: number;
-  extraCltMinutes: number;
-  saidaAntecCltMinutes: number;
-  saldoCltMinutes: number;
+  // Valores brutos por batida (após regra dos 5 minutos)
+  atrasoBrutoMinutes: number; // Atrasos considerados (após tolerância de 5min por batida)
+  chegadaAntecBrutoMinutes: number; // Chegadas antecipadas consideradas
+  extraBrutoMinutes: number; // Extras considerados
+  saidaAntecBrutoMinutes: number; // Saídas antecipadas consideradas
+  
+  // Soma total do dia (antes do teto de 10 minutos)
+  saldoBrutoDia: number; // Soma total: (extra + chegada_antec) - (atraso + saida_antec)
+  
+  // Valores finais após teto diário de 10 minutos
+  atrasoCltMinutes: number; // Atraso CLT final (após teto)
+  chegadaAntecCltMinutes: number; // Chegada antecipada CLT final
+  extraCltMinutes: number; // Hora extra CLT final (após teto)
+  saidaAntecCltMinutes: number; // Saída antecipada CLT final
+  
+  // Saldo final conforme tipo de compensação
+  saldoCltMinutes: number; // Para Banco de Horas: saldo líquido. Para Pagamento: separado em extra e atraso
+  extraParaPagamento?: number; // Apenas para PAGAMENTO_FOLHA: minutos de hora extra para pagamento
+  faltaParaDesconto?: number; // Apenas para PAGAMENTO_FOLHA: minutos de falta/atraso para desconto
+  
+  // Logs explicativos
+  logs: string[];
 }
 
 /**
- * Aplica tolerância CLT (art. 58 §1º + Súmula 366 TST)
- * - Tolerância de 5 minutos por marcação (início/fim da jornada)
- * - Limite máximo de 10 minutos de tolerância no dia
+ * Aplica tolerância CLT conforme Art. 58 §1º
  * 
- * @param deltaStart - Variação em minutos da primeira entrada (pode ser negativo)
- * @param deltaEnd - Variação em minutos da última saída (pode ser negativo)
- * @returns Valores CLT após aplicar tolerância
+ * PASSO 1: Regra dos 5 minutos por batida
+ * - Se |diferença| <= 5min: considera 0
+ * - Se |diferença| > 5min: considera o TOTAL (não apenas excedente)
+ * 
+ * PASSO 2: Teto diário de 10 minutos
+ * - Se soma total entre -10 e +10: zera tudo
+ * - Se ultrapassar: considera o valor TOTAL
+ * 
+ * PASSO 3: Tratamento conforme tipo de compensação
+ * - BANCO_DE_HORAS: netting (positivos - negativos)
+ * - PAGAMENTO_FOLHA: separa extras de faltas
+ * 
+ * @param deltaStart - Diferença em minutos da primeira entrada (pode ser negativo)
+ * @param deltaEnd - Diferença em minutos da última saída (pode ser negativo)
+ * @param compensationType - Tipo de compensação: 'BANCO_DE_HORAS' ou 'PAGAMENTO_FOLHA'
+ * @returns Valores CLT após aplicar todas as tolerâncias e regras
  */
 export function applyCltTolerance(
   deltaStart: number,
-  deltaEnd: number
+  deltaEnd: number,
+  compensationType: CompensationType = 'BANCO_DE_HORAS'
 ): CltToleranceResult {
-  // Variação absoluta em cada evento
-  const absStart = Math.abs(deltaStart);
-  const absEnd = Math.abs(deltaEnd);
+  const logs: string[] = [];
   
-  // Candidatos a tolerância (máximo 5 min por evento)
-  // Se |Δ| ≤ 5, tolera |Δ|. Se |Δ| > 5, tolera apenas 5
-  let toleratedStart = Math.min(absStart, TOLERANCE_PER_EVENT_MINUTES);
-  let toleratedEnd = Math.min(absEnd, TOLERANCE_PER_EVENT_MINUTES);
+  logs.push(`=== CÁLCULO CLT - Art. 58 §1º ===`);
+  logs.push(`Delta inicial: entrada=${deltaStart}min, saída=${deltaEnd}min`);
+  logs.push(`Tipo de compensação: ${compensationType === 'BANCO_DE_HORAS' ? 'Banco de Horas' : 'Pagamento em Folha'}`);
   
-  // Soma de tolerados no dia (antes de aplicar teto)
-  let toleratedSum = toleratedStart + toleratedEnd;
+  // ============================================
+  // PASSO 1: REGRA DOS 5 MINUTOS POR BATIDA
+  // ============================================
+  // Se |Δ| <= 5min, considera 0. Se |Δ| > 5min, considera o TOTAL
   
-  // Se excedeu 10 min, remover o excedente
-  // Política: remover primeiro da maior variação tolerada
-  if (toleratedSum > TOLERANCE_DAILY_CAP_MINUTES) {
-    const excess = toleratedSum - TOLERANCE_DAILY_CAP_MINUTES;
+  let atrasoBrutoMinutes = 0;
+  let chegadaAntecBrutoMinutes = 0;
+  let extraBrutoMinutes = 0;
+  let saidaAntecBrutoMinutes = 0;
+  
+  // Tratar entrada (deltaStart)
+  if (deltaStart !== null && deltaStart !== undefined) {
+    const absStart = Math.abs(deltaStart);
     
-    // Remover primeiro da maior variação tolerada
-    if (toleratedStart >= toleratedEnd) {
-      // Remover de start primeiro
-      if (toleratedStart >= excess) {
-        toleratedStart -= excess;
-      } else {
-        const remaining = excess - toleratedStart;
-        toleratedStart = 0;
-        toleratedEnd = Math.max(0, toleratedEnd - remaining);
-      }
+    if (absStart <= TOLERANCE_PER_PUNCH_MINUTES) {
+      // Dentro da tolerância: zera
+      logs.push(`[REGRA 5min] Entrada: diferença ${deltaStart}min (abs=${absStart}min) <= 5min → ZERA (tolerado)`);
+      // Não adiciona nada (já está em 0)
     } else {
-      // Remover de end primeiro
-      if (toleratedEnd >= excess) {
-        toleratedEnd -= excess;
+      // Fora da tolerância: considera o TOTAL (não apenas excedente)
+      logs.push(`[REGRA 5min] Entrada: diferença ${deltaStart}min (abs=${absStart}min) > 5min → considera TOTAL (${deltaStart}min)`);
+      
+      if (deltaStart > 0) {
+        // Atraso
+        atrasoBrutoMinutes = deltaStart; // TOTAL, não apenas excedente
       } else {
-        const remaining = excess - toleratedEnd;
-        toleratedEnd = 0;
-        toleratedStart = Math.max(0, toleratedStart - remaining);
+        // Chegada antecipada (deltaStart < 0)
+        chegadaAntecBrutoMinutes = absStart; // TOTAL, não apenas excedente
       }
     }
   }
   
-  // Calcular o que é computável (chargeable)
-  // REGRA CLT: Se |Δ| ≤ 5, chargeable = 0 (tudo tolerado)
-  //            Se |Δ| > 5, chargeable = |Δ| - tolerated (excedente após tolerância)
-  // Após aplicar teto diário, pode haver recuperação de tolerados
-  const chargeableStart = absStart - toleratedStart;
-  const chargeableEnd = absEnd - toleratedEnd;
-  
-  // Reaplicar o sinal original
-  let atrasoCltMinutes = 0;
-  let chegadaAntecCltMinutes = 0;
-  let extraCltMinutes = 0;
-  let saidaAntecCltMinutes = 0;
-  
-  if (deltaStart > 0) {
-    // Atraso
-    atrasoCltMinutes = chargeableStart;
-  } else if (deltaStart < 0) {
-    // Chegada antecipada
-    chegadaAntecCltMinutes = chargeableStart;
+  // Tratar saída (deltaEnd)
+  if (deltaEnd !== null && deltaEnd !== undefined) {
+    const absEnd = Math.abs(deltaEnd);
+    
+    if (absEnd <= TOLERANCE_PER_PUNCH_MINUTES) {
+      // Dentro da tolerância: zera
+      logs.push(`[REGRA 5min] Saída: diferença ${deltaEnd}min (abs=${absEnd}min) <= 5min → ZERA (tolerado)`);
+      // Não adiciona nada (já está em 0)
+    } else {
+      // Fora da tolerância: considera o TOTAL
+      logs.push(`[REGRA 5min] Saída: diferença ${deltaEnd}min (abs=${absEnd}min) > 5min → considera TOTAL (${deltaEnd}min)`);
+      
+      if (deltaEnd > 0) {
+        // Hora extra (saída depois do horário)
+        extraBrutoMinutes = deltaEnd; // TOTAL, não apenas excedente
+      } else {
+        // Saída antecipada (deltaEnd < 0)
+        saidaAntecBrutoMinutes = absEnd; // TOTAL, não apenas excedente
+      }
+    }
   }
   
-  if (deltaEnd > 0) {
-    // Hora extra
-    extraCltMinutes = chargeableEnd;
-  } else if (deltaEnd < 0) {
-    // Saída antecipada
-    saidaAntecCltMinutes = chargeableEnd;
+  // Calcular saldo bruto do dia (antes do teto)
+  // Saldo = (extras + chegadas antecipadas) - (atrasos + saídas antecipadas)
+  const saldoBrutoDia = (extraBrutoMinutes + chegadaAntecBrutoMinutes) - (atrasoBrutoMinutes + saidaAntecBrutoMinutes);
+  
+  logs.push(`Saldo bruto do dia (antes do teto de 10min): ${saldoBrutoDia}min`);
+  logs.push(`  = (${extraBrutoMinutes}min extra + ${chegadaAntecBrutoMinutes}min cheg.antec) - (${atrasoBrutoMinutes}min atraso + ${saidaAntecBrutoMinutes}min saida.antec)`);
+  
+  // ============================================
+  // PASSO 2: TETO DIÁRIO DE 10 MINUTOS
+  // ============================================
+  // Se soma total entre -10 e +10: zera tudo
+  // Se ultrapassar: considera o valor TOTAL
+  
+  let atrasoCltMinutes = atrasoBrutoMinutes;
+  let chegadaAntecCltMinutes = chegadaAntecBrutoMinutes;
+  let extraCltMinutes = extraBrutoMinutes;
+  let saidaAntecCltMinutes = saidaAntecBrutoMinutes;
+  
+  if (saldoBrutoDia >= -TOLERANCE_DAILY_RANGE_MINUTES && saldoBrutoDia <= TOLERANCE_DAILY_RANGE_MINUTES) {
+    // Dentro do teto diário: zera tudo
+    logs.push(`[REGRA 10min] Saldo ${saldoBrutoDia}min está entre -10 e +10min → ZERA TUDO (teto diário aplicado)`);
+    atrasoCltMinutes = 0;
+    chegadaAntecCltMinutes = 0;
+    extraCltMinutes = 0;
+    saidaAntecCltMinutes = 0;
+  } else {
+    // Fora do teto: mantém os valores totais
+    logs.push(`[REGRA 10min] Saldo ${saldoBrutoDia}min ultrapassa teto de ±10min → mantém valores totais`);
+    logs.push(`  ATRASO_CLT: ${atrasoCltMinutes}min`);
+    logs.push(`  CHEGADA_ANTEC_CLT: ${chegadaAntecCltMinutes}min`);
+    logs.push(`  EXTRA_CLT: ${extraCltMinutes}min`);
+    logs.push(`  SAIDA_ANTEC_CLT: ${saidaAntecCltMinutes}min`);
   }
   
-  // SALDO_CLT = (extra + chegada_antec) - (atraso + saida_antec)
-  const saldoCltMinutes = (extraCltMinutes + chegadaAntecCltMinutes) - (atrasoCltMinutes + saidaAntecCltMinutes);
+  // ============================================
+  // PASSO 3: TRATAMENTO CONFORME TIPO DE COMPENSAÇÃO
+  // ============================================
+  
+  let saldoCltMinutes = 0;
+  let extraParaPagamento: number | undefined = undefined;
+  let faltaParaDesconto: number | undefined = undefined;
+  
+  if (compensationType === 'BANCO_DE_HORAS') {
+    // BANCO DE HORAS: Faz netting (soma saldo líquido)
+    saldoCltMinutes = (extraCltMinutes + chegadaAntecCltMinutes) - (atrasoCltMinutes + saidaAntecCltMinutes);
+    logs.push(`[BANCO DE HORAS] Saldo líquido: ${saldoCltMinutes}min (${extraCltMinutes + chegadaAntecCltMinutes}min positivos - ${atrasoCltMinutes + saidaAntecCltMinutes}min negativos)`);
+  } else {
+    // PAGAMENTO EM FOLHA: Separa extras de faltas (NÃO faz netting)
+    // Extras: para pagamento com adicional
+    extraParaPagamento = extraCltMinutes + chegadaAntecCltMinutes;
+    // Faltas/atrasos: para desconto
+    faltaParaDesconto = atrasoCltMinutes + saidaAntecCltMinutes;
+    // Saldo é zero para pagamento (não há netting)
+    saldoCltMinutes = 0;
+    
+    logs.push(`[PAGAMENTO EM FOLHA] NÃO faz netting - valores separados:`);
+    logs.push(`  Hora Extra para pagamento: ${extraParaPagamento}min (${extraCltMinutes}min extra + ${chegadaAntecCltMinutes}min cheg.antec)`);
+    logs.push(`  Falta/Atraso para desconto: ${faltaParaDesconto}min (${atrasoCltMinutes}min atraso + ${saidaAntecCltMinutes}min saida.antec)`);
+  }
   
   return {
+    // Valores brutos (após regra dos 5min)
+    atrasoBrutoMinutes,
+    chegadaAntecBrutoMinutes,
+    extraBrutoMinutes,
+    saidaAntecBrutoMinutes,
+    saldoBrutoDia,
+    
+    // Valores finais CLT (após teto de 10min)
     atrasoCltMinutes,
     chegadaAntecCltMinutes,
     extraCltMinutes,
     saidaAntecCltMinutes,
     saldoCltMinutes,
+    
+    // Valores para pagamento (apenas se PAGAMENTO_FOLHA)
+    extraParaPagamento,
+    faltaParaDesconto,
+    
+    logs,
   };
 }
 
@@ -208,7 +315,7 @@ export function computeStartEndDeltas(
     }
   }
   
-  // Calcular deltas
+  // Calcular deltas em minutos inteiros
   let deltaStart: number | null = null;
   let deltaEnd: number | null = null;
   
@@ -216,11 +323,11 @@ export function computeStartEndDeltas(
     try {
       const real = parse(firstEntry.time, 'yyyy-MM-dd HH:mm:ss', new Date());
       const scheduled = parse(`${workDate} ${firstEntry.scheduled}:00`, 'yyyy-MM-dd HH:mm:ss', new Date());
-      // Delta = real - scheduled
+      // Delta = real - scheduled (em minutos)
       // Positivo = atraso (real > scheduled)
       // Negativo = antecipação (real < scheduled)
       const deltaSeconds = calculateSecondsDifference(scheduled, real);
-      deltaStart = toMinutesFloor(deltaSeconds);
+      deltaStart = toMinutesFloor(deltaSeconds); // Usar floor para trabalhar com minutos inteiros
     } catch (error) {
       // Ignorar erro
     }
@@ -230,11 +337,11 @@ export function computeStartEndDeltas(
     try {
       const real = parse(lastExit.time, 'yyyy-MM-dd HH:mm:ss', new Date());
       const scheduled = parse(`${workDate} ${lastExit.scheduled}:00`, 'yyyy-MM-dd HH:mm:ss', new Date());
-      // Delta = real - scheduled
+      // Delta = real - scheduled (em minutos)
       // Positivo = saída depois do horário (hora extra)
       // Negativo = saída antes do horário (saída antecipada)
       const deltaSeconds = calculateSecondsDifference(scheduled, real);
-      deltaEnd = toMinutesFloor(deltaSeconds);
+      deltaEnd = toMinutesFloor(deltaSeconds); // Usar floor para trabalhar com minutos inteiros
     } catch (error) {
       // Ignorar erro
     }
@@ -242,4 +349,3 @@ export function computeStartEndDeltas(
   
   return { deltaStart, deltaEnd };
 }
-

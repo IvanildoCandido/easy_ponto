@@ -19,6 +19,7 @@ interface Schedule {
   afternoon_end: string | null;
   shift_type?: 'FULL_DAY' | 'MORNING_ONLY' | 'AFTERNOON_ONLY' | null;
   break_minutes?: number | null;
+  interval_tolerance_minutes?: number | null;
 }
 
 const DAYS_OF_WEEK = [
@@ -137,6 +138,7 @@ export default function ScheduleConfig() {
           afternoon_end: '17:00',
           shift_type: 'FULL_DAY',
           break_minutes: null,
+          interval_tolerance_minutes: null,
         };
       });
       
@@ -175,6 +177,7 @@ export default function ScheduleConfig() {
             afternoon_end: schedule.afternoon_end || null,
             shift_type: schedule.shift_type || 'FULL_DAY',
             break_minutes: schedule.break_minutes || null,
+            interval_tolerance_minutes: schedule.interval_tolerance_minutes || null,
           };
           
           const response = await fetch('/api/schedules', {
@@ -515,6 +518,29 @@ export default function ScheduleConfig() {
                               Funcionário deve bater 4 vezes: Entrada, Saída Intervalo, Entrada pós-intervalo, Saída Final
                             </p>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Tolerância de Intervalo - apenas para jornada completa */}
+                      {isFullDay && hasMorning && hasAfternoon && (
+                        <div className="mb-4 mt-4 pt-4 border-t border-neutral-200">
+                          <label className="block text-xs font-semibold text-neutral-700 mb-2">
+                            Tolerância de Intervalo (minutos)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="120"
+                            value={schedule?.interval_tolerance_minutes || ''}
+                            onChange={(e) =>
+                              handleScheduleChange(day.value, 'interval_tolerance_minutes', e.target.value ? parseInt(e.target.value) : null)
+                            }
+                            className="input text-sm py-2 w-32"
+                            placeholder="0"
+                          />
+                          <p className="text-xs text-neutral-500 mt-1">
+                            Minutos permitidos a mais no intervalo sem considerar excesso (ex: 20 minutos). Deixe vazio para não ter tolerância.
+                          </p>
                         </div>
                       )}
                     </div>

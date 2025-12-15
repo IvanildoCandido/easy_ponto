@@ -48,6 +48,14 @@ export async function calculateDailyRecords(date: string) {
   for (const [employeeId, employeeRecords] of Object.entries(byEmployee)) {
     const empId = parseInt(employeeId);
     
+    // Buscar dados do funcionário para obter compensation_type
+    const employee = await queryOne<{ compensation_type?: 'BANCO_DE_HORAS' | 'PAGAMENTO_FOLHA' | null }>(
+      `SELECT compensation_type FROM employees WHERE id = $1`,
+      [empId]
+    );
+    const compensationType: 'BANCO_DE_HORAS' | 'PAGAMENTO_FOLHA' = 
+      (employee?.compensation_type as 'BANCO_DE_HORAS' | 'PAGAMENTO_FOLHA') || 'BANCO_DE_HORAS';
+    
     // Normalizar datetime para string (Postgres retorna Date object, SQLite retorna string)
     // Se houver datetime_local (Postgres com timezone), usar ele; senão usar datetime
     const normalizedRecords = employeeRecords.map(record => {
@@ -78,21 +86,62 @@ export async function calculateDailyRecords(date: string) {
       }
     }
     
-    // Buscar horário de trabalho primeiro para identificar corretamente os pontos
+    // Buscar horário de trabalho: primeiro verificar se há exceção para esta data específica
+    // Se não houver exceção, usar o horário padrão do dia da semana
     // Se for domingo (dayOfWeek === null), não buscar schedule
-    const schedule = dayOfWeek
-      ? await queryOne<WorkSchedule>(
+    let schedule: WorkSchedule | null = null;
+    
+    if (dayOfWeek) {
+      // Primeiro, tentar buscar override (horário excepcional) para a data específica
+      const override = await queryOne<WorkSchedule & { date?: string }>(
+        `
+          SELECT 
+            id,
+            employee_id,
+            morning_start,
+            morning_end,
+            afternoon_start,
+            afternoon_end,
+            shift_type,
+            break_minutes,
+            interval_tolerance_minutes
+          FROM schedule_overrides 
+          WHERE employee_id = $1 AND date = $2
+        `,
+        [empId, date]
+      );
+      
+      if (override) {
+        // Usar override encontrado (horário excepcional para esta data específica)
+        schedule = {
+          id: override.id,
+          employee_id: override.employee_id,
+          day_of_week: dayOfWeek, // Usar dayOfWeek calculado para compatibilidade
+          morning_start: override.morning_start,
+          morning_end: override.morning_end,
+          afternoon_start: override.afternoon_start,
+          afternoon_end: override.afternoon_end,
+          shift_type: override.shift_type || null,
+          break_minutes: override.break_minutes || null,
+          interval_tolerance_minutes: override.interval_tolerance_minutes || null,
+        };
+        logger.info(`[calculateDailyRecords] Usando schedule override para funcionário ${empId} na data ${date}`);
+      } else {
+        // Se não houver exceção, usar horário padrão do dia da semana
+        schedule = await queryOne<WorkSchedule>(
           `
             SELECT * FROM work_schedules 
             WHERE employee_id = $1 AND day_of_week = $2
           `,
           [empId, dayOfWeek]
-        )
-      : null;
+        );
+      }
+    }
     
     // Identificar tipo de turno
     const shiftType = schedule?.shift_type || 'FULL_DAY';
     const breakMinutes = schedule?.break_minutes || null;
+    const intervalToleranceMinutes = schedule?.interval_tolerance_minutes || 0; // Tolerância de intervalo (padrão: 0 = sem tolerância)
     const isSingleShift = shiftType === 'MORNING_ONLY' || shiftType === 'AFTERNOON_ONLY';
     
     if (!schedule) {
@@ -134,16 +183,56 @@ export async function calculateDailyRecords(date: string) {
       new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
     );
     
+    // Buscar correções manuais ANTES de processar batidas do arquivo
+    // Se houver correção manual, ela tem prioridade sobre as batidas do arquivo
+    const manualCorrection = await queryOne<{
+      morning_entry: string | null;
+      lunch_exit: string | null;
+      afternoon_entry: string | null;
+      final_exit: string | null;
+    }>(
+      `SELECT morning_entry, lunch_exit, afternoon_entry, final_exit
+       FROM manual_punch_corrections 
+       WHERE employee_id = $1 AND date = $2`,
+      [empId, date]
+    );
+    
+    // Buscar ocorrências existentes ANTES de identificar batidas (para usar na lógica inteligente)
+    const existingRecord = await queryOne<{
+      occurrence_type: string | null;
+      occurrence_hours_minutes: number | null;
+      occurrence_duration: string | null;
+      occurrence_morning_entry: boolean | null;
+      occurrence_lunch_exit: boolean | null;
+      occurrence_afternoon_entry: boolean | null;
+      occurrence_final_exit: boolean | null;
+    }>(
+      `SELECT occurrence_type, occurrence_hours_minutes, occurrence_duration,
+              occurrence_morning_entry, occurrence_lunch_exit, 
+              occurrence_afternoon_entry, occurrence_final_exit
+       FROM processed_records 
+       WHERE employee_id = $1 AND date = $2`,
+      [empId, date]
+    );
+    
     let morningEntry: string | null = null;
     let lunchExit: string | null = null;
     let afternoonEntry: string | null = null;
     let finalExit: string | null = null;
     
+    // Se houver correção manual, usar ela diretamente
+    if (manualCorrection) {
+      logger.info(`[calculateDailyRecords] Usando correção manual para funcionário ${empId} na data ${date}`);
+      morningEntry = manualCorrection.morning_entry;
+      lunchExit = manualCorrection.lunch_exit;
+      afternoonEntry = manualCorrection.afternoon_entry;
+      finalExit = manualCorrection.final_exit;
+    }
+    
     // LÓGICA DE IDENTIFICAÇÃO DE BATIDAS
-    // Diferença entre turno único (horistas) e jornada completa:
-    // - Turno único com 4 batidas: Entrada turno, Saída intervalo, Entrada pós-intervalo, Saída final
-    // - Jornada completa com 4 batidas: Entrada manhã, Saída almoço, Entrada tarde, Saída tarde
-    if (uniqueByTime.length >= 1) {
+    // Se NÃO houver correção manual, processar batidas do arquivo
+    // Se houver correção manual, usar ela (já foi atribuída acima)
+    if (!manualCorrection && uniqueByTime.length >= 1) {
       const punches = uniqueByTime;
 
       if (isSingleShift && punches.length >= 4) {
@@ -172,10 +261,74 @@ export async function calculateDailyRecords(date: string) {
           lunchExit = punches[1].datetime;       // 2ª batida: Saída intervalo
           afternoonEntry = punches[2].datetime;  // 3ª batida: Entrada pós-intervalo
         } else {
-          // Jornada completa com 3 batidas
-          morningEntry = punches[0].datetime;
-          lunchExit = punches[1].datetime;
-          afternoonEntry = punches[2].datetime;
+          // Jornada completa com 3 batidas - precisa determinar qual batida está faltando
+          // Analisar os horários para identificar corretamente qual batida falta
+          const punch1Time = parse(punches[0].datetime, 'yyyy-MM-dd HH:mm:ss', new Date());
+          const punch2Time = parse(punches[1].datetime, 'yyyy-MM-dd HH:mm:ss', new Date());
+          const punch3Time = parse(punches[2].datetime, 'yyyy-MM-dd HH:mm:ss', new Date());
+          
+          const punch1Hour = punch1Time.getHours();
+          const punch2Hour = punch2Time.getHours();
+          const punch3Hour = punch3Time.getHours();
+          
+          // Verificar se há ocorrência de esquecimento de batida marcada
+          const hasForgottenMorningEntry = existingRecord?.occurrence_morning_entry === true && existingRecord?.occurrence_type === 'ESQUECIMENTO_BATIDA';
+          const hasForgottenAfternoonEntry = existingRecord?.occurrence_afternoon_entry === true && existingRecord?.occurrence_type === 'ESQUECIMENTO_BATIDA';
+          const hasForgottenLunchExit = existingRecord?.occurrence_lunch_exit === true && existingRecord?.occurrence_type === 'ESQUECIMENTO_BATIDA';
+          const hasForgottenFinalExit = existingRecord?.occurrence_final_exit === true && existingRecord?.occurrence_type === 'ESQUECIMENTO_BATIDA';
+          
+          // Se houver ocorrência marcada, usar ela para determinar qual batida falta
+          if (hasForgottenAfternoonEntry) {
+            // Entrada tarde esquecida - 3ª batida deve ser a saída final
+            morningEntry = punches[0].datetime;
+            lunchExit = punches[1].datetime;
+            // afternoonEntry = null (esquecida)
+            finalExit = punches[2].datetime; // 3ª batida é na verdade a saída final
+          } else if (hasForgottenMorningEntry) {
+            // Entrada manhã esquecida - provavelmente começou a trabalhar direto
+            // 1ª batida seria saída almoço, 2ª entrada tarde, 3ª saída final
+            lunchExit = punches[0].datetime;
+            afternoonEntry = punches[1].datetime;
+            finalExit = punches[2].datetime;
+          } else if (hasForgottenLunchExit) {
+            // Saída almoço esquecida - 1ª entrada, 2ª entrada tarde, 3ª saída final
+            morningEntry = punches[0].datetime;
+            afternoonEntry = punches[1].datetime;
+            finalExit = punches[2].datetime;
+          } else if (hasForgottenFinalExit) {
+            // Saída final esquecida - 3 batidas normais
+            morningEntry = punches[0].datetime;
+            lunchExit = punches[1].datetime;
+            afternoonEntry = punches[2].datetime;
+          } else {
+            // Sem ocorrência marcada, tentar identificar pelo horário
+            // Analisar a 3ª batida: se for tarde (após 16h), provavelmente é saída final
+            // Se for cedo (13h-14h), provavelmente é entrada tarde
+            if (punch3Hour >= 16) {
+              // 3ª batida é tarde, provavelmente é a saída final (falta entrada tarde)
+              morningEntry = punches[0].datetime;
+              lunchExit = punches[1].datetime;
+              // afternoonEntry = null (não batida)
+              finalExit = punches[2].datetime; // 3ª batida é a saída final
+            } else if (punch3Hour >= 12 && punch3Hour < 14) {
+              // 3ª batida é por volta de 12h-14h, provavelmente é entrada tarde (falta saída final)
+              morningEntry = punches[0].datetime;
+              lunchExit = punches[1].datetime;
+              afternoonEntry = punches[2].datetime;
+              // finalExit = null (não batida)
+            } else if (punch1Hour >= 12 && punch1Hour < 14) {
+              // 1ª batida é tarde, provavelmente começou direto no almoço
+              // 1ª = saída almoço, 2ª = entrada tarde, 3ª = saída final
+              lunchExit = punches[0].datetime;
+              afternoonEntry = punches[1].datetime;
+              finalExit = punches[2].datetime;
+            } else {
+              // Fallback: mapear sequencialmente (comportamento antigo)
+              morningEntry = punches[0].datetime;
+              lunchExit = punches[1].datetime;
+              afternoonEntry = punches[2].datetime;
+            }
+          }
         }
       } else if (punches.length === 2) {
         const firstTime = parse(punches[0].datetime, 'yyyy-MM-dd HH:mm:ss', new Date());
@@ -265,27 +418,10 @@ export async function calculateDailyRecords(date: string) {
     }
     
     // Calcular usando o novo modelo: Saldo = HorasTrabalhadas - HorasPrevistas
-    const summary = computeDaySummaryV2(punchTimes, scheduledTimes, date, singleShiftInfoForCalc);
+    // Passar compensation_type para aplicar regras corretas (Banco de Horas vs Pagamento)
+    const summary = computeDaySummaryV2(punchTimes, scheduledTimes, date, singleShiftInfoForCalc, intervalToleranceMinutes, compensationType);
     
-    // Verificar se já existe um registro com ocorrência para preservar os dados
-    const existingRecord = await queryOne<{
-      occurrence_type: string | null;
-      occurrence_hours_minutes: number | null;
-      occurrence_duration: string | null;
-      occurrence_morning_entry: boolean | null;
-      occurrence_lunch_exit: boolean | null;
-      occurrence_afternoon_entry: boolean | null;
-      occurrence_final_exit: boolean | null;
-    }>(
-      `SELECT occurrence_type, occurrence_hours_minutes, occurrence_duration,
-              occurrence_morning_entry, occurrence_lunch_exit, 
-              occurrence_afternoon_entry, occurrence_final_exit
-       FROM processed_records 
-       WHERE employee_id = $1 AND date = $2`,
-      [empId, date]
-    );
-    
-    // Ajustar cálculo se houver ocorrência
+    // Ajustar cálculo se houver ocorrência (existingRecord já foi buscado anteriormente)
     // IMPORTANTE: summary.expectedMinutes já vem do cálculo baseado no schedule (original)
     let adjustedExpectedMinutes = summary.expectedMinutes;
     let adjustedBalanceSeconds = summary.balanceSeconds;
@@ -344,6 +480,12 @@ export async function calculateDailyRecords(date: string) {
     const occurrenceAfternoonEntry = existingRecord?.occurrence_afternoon_entry || false;
     const occurrenceFinalExit = existingRecord?.occurrence_final_exit || false;
     
+    // Determinar quais batidas são manuais (baseado em correção manual)
+    const isManualMorningEntry = !!manualCorrection?.morning_entry;
+    const isManualLunchExit = !!manualCorrection?.lunch_exit;
+    const isManualAfternoonEntry = !!manualCorrection?.afternoon_entry;
+    const isManualFinalExit = !!manualCorrection?.final_exit;
+    
     // Salvar no banco
     // O novo modelo usa segundos diretamente, mas o banco ainda armazena alguns campos em segundos
     await query(
@@ -354,8 +496,9 @@ export async function calculateDailyRecords(date: string) {
            early_exit_seconds, worked_minutes, expected_minutes, balance_seconds, interval_excess_seconds,
            atraso_clt_minutes, chegada_antec_clt_minutes, extra_clt_minutes, saida_antec_clt_minutes, saldo_clt_minutes, status,
            occurrence_type, occurrence_hours_minutes, occurrence_duration,
-           occurrence_morning_entry, occurrence_lunch_exit, occurrence_afternoon_entry, occurrence_final_exit)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
+           occurrence_morning_entry, occurrence_lunch_exit, occurrence_afternoon_entry, occurrence_final_exit,
+           is_manual_morning_entry, is_manual_lunch_exit, is_manual_afternoon_entry, is_manual_final_exit)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
         ON CONFLICT (employee_id, date) DO UPDATE SET
           first_entry = EXCLUDED.first_entry,
           last_exit = EXCLUDED.last_exit,
@@ -385,7 +528,11 @@ export async function calculateDailyRecords(date: string) {
           occurrence_morning_entry = COALESCE(processed_records.occurrence_morning_entry, EXCLUDED.occurrence_morning_entry),
           occurrence_lunch_exit = COALESCE(processed_records.occurrence_lunch_exit, EXCLUDED.occurrence_lunch_exit),
           occurrence_afternoon_entry = COALESCE(processed_records.occurrence_afternoon_entry, EXCLUDED.occurrence_afternoon_entry),
-          occurrence_final_exit = COALESCE(processed_records.occurrence_final_exit, EXCLUDED.occurrence_final_exit)
+          occurrence_final_exit = COALESCE(processed_records.occurrence_final_exit, EXCLUDED.occurrence_final_exit),
+          is_manual_morning_entry = EXCLUDED.is_manual_morning_entry,
+          is_manual_lunch_exit = EXCLUDED.is_manual_lunch_exit,
+          is_manual_afternoon_entry = EXCLUDED.is_manual_afternoon_entry,
+          is_manual_final_exit = EXCLUDED.is_manual_final_exit
       `,
       [
         empId,
@@ -419,6 +566,10 @@ export async function calculateDailyRecords(date: string) {
         occurrenceLunchExit, // $29
         occurrenceAfternoonEntry, // $30
         occurrenceFinalExit, // $31
+        isManualMorningEntry, // $32
+        isManualLunchExit, // $33
+        isManualAfternoonEntry, // $34
+        isManualFinalExit, // $35
       ]
     );
   }

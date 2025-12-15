@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { employee_id, day_of_week, morning_start, morning_end, afternoon_start, afternoon_end, shift_type, break_minutes } = body;
+    const { employee_id, day_of_week, morning_start, morning_end, afternoon_start, afternoon_end, shift_type, break_minutes, interval_tolerance_minutes } = body;
     
     if (!employee_id || day_of_week === undefined) {
       return NextResponse.json(
@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
     const normAfternoonEnd = normalizeTime(afternoon_end);
     const normShiftType = shift_type || 'FULL_DAY';
     const normBreakMinutes = break_minutes !== undefined && break_minutes !== null ? parseInt(String(break_minutes)) : null;
+    const normIntervalToleranceMinutes = interval_tolerance_minutes !== undefined && interval_tolerance_minutes !== null && interval_tolerance_minutes !== '' ? parseInt(String(interval_tolerance_minutes)) : null;
     
     // Validar shift_type
     if (normShiftType && !['FULL_DAY', 'MORNING_ONLY', 'AFTERNOON_ONLY'].includes(normShiftType)) {
@@ -118,15 +119,16 @@ export async function POST(request: NextRequest) {
     
     const result = await queryOne<{ id: number }>(
       `
-        INSERT INTO work_schedules (employee_id, day_of_week, morning_start, morning_end, afternoon_start, afternoon_end, shift_type, break_minutes)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO work_schedules (employee_id, day_of_week, morning_start, morning_end, afternoon_start, afternoon_end, shift_type, break_minutes, interval_tolerance_minutes)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (employee_id, day_of_week) DO UPDATE SET
           morning_start = EXCLUDED.morning_start,
           morning_end = EXCLUDED.morning_end,
           afternoon_start = EXCLUDED.afternoon_start,
           afternoon_end = EXCLUDED.afternoon_end,
           shift_type = EXCLUDED.shift_type,
-          break_minutes = EXCLUDED.break_minutes
+          break_minutes = EXCLUDED.break_minutes,
+          interval_tolerance_minutes = EXCLUDED.interval_tolerance_minutes
         RETURNING id
       `,
       [
@@ -138,6 +140,7 @@ export async function POST(request: NextRequest) {
         normAfternoonEnd,
         normShiftType,
         normBreakMinutes,
+        normIntervalToleranceMinutes,
       ]
     );
     

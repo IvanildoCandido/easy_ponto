@@ -45,8 +45,8 @@ export async function GET(request: NextRequest) {
     // EXTRACT(DOW FROM date) retorna 0-6 (0=Domingo, 1=Segunda, ..., 6=Sábado)
     // work_schedules usa 1=Segunda, então o valor já está correto (só filtrar domingo)
     let reports = (await query(
-      `
-        SELECT 
+        `
+          SELECT 
           pr.id,
           pr.employee_id,
           pr.date,
@@ -77,22 +77,22 @@ export async function GET(request: NextRequest) {
           COALESCE(pr.occurrence_lunch_exit, false) as occurrence_lunch_exit,
           COALESCE(pr.occurrence_afternoon_entry, false) as occurrence_afternoon_entry,
           COALESCE(pr.occurrence_final_exit, false) as occurrence_final_exit,
-          e.name as employee_name,
+            e.name as employee_name,
           e.department,
           ws.shift_type,
           ws.break_minutes
-        FROM processed_records pr
-        JOIN employees e ON pr.employee_id = e.id
+          FROM processed_records pr
+          JOIN employees e ON pr.employee_id = e.id
         LEFT JOIN work_schedules ws ON ws.employee_id = e.id 
           AND ws.day_of_week = EXTRACT(DOW FROM pr.date)
           AND EXTRACT(DOW FROM pr.date) BETWEEN 1 AND 6
-        WHERE pr.employee_id = $1 
+          WHERE pr.employee_id = $1 
           AND pr.date >= $2
           AND pr.date <= $3
-        ORDER BY pr.date ASC
-      `,
-      [parseInt(employeeId), startDate, endDate]
-    )) as any[];
+          ORDER BY pr.date ASC
+        `,
+        [parseInt(employeeId), startDate, endDate]
+      )) as any[];
     
     // Filtrar os resultados para garantir que são do mês correto
     const monthPrefix = month;
@@ -127,18 +127,18 @@ export async function GET(request: NextRequest) {
         if (report.date instanceof Date) {
           normalizedDate = format(report.date, 'yyyy-MM-dd');
         } else {
-          const dateStr = String(report.date);
-          // Tentar extrair data no formato yyyy-MM-dd
-          if (dateStr.length >= 10) {
-            normalizedDate = dateStr.substring(0, 10);
-          } else {
-              // Tentar parsear a data se estiver em outro formato
-            try {
-              const parsedDate = new Date(dateStr);
-              if (!isNaN(parsedDate.getTime())) {
-                normalizedDate = format(parsedDate, 'yyyy-MM-dd');
-              }
-            } catch (e) {
+        const dateStr = String(report.date);
+        // Tentar extrair data no formato yyyy-MM-dd
+        if (dateStr.length >= 10) {
+          normalizedDate = dateStr.substring(0, 10);
+        } else {
+          // Tentar parsear a data se estiver em outro formato
+          try {
+            const parsedDate = new Date(dateStr);
+            if (!isNaN(parsedDate.getTime())) {
+              normalizedDate = format(parsedDate, 'yyyy-MM-dd');
+            }
+          } catch (e) {
               // Ignorar erro de parsing
             }
           }

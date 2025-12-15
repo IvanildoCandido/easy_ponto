@@ -43,21 +43,21 @@ export async function GET(request: NextRequest) {
       // SQLite: strftime('%w') retorna 0-6, onde 0=Domingo, 1=Segunda, etc.
       // work_schedules usa 1=Segunda, então o valor já está correto
       sql = `
-        SELECT 
-          pr.*,
-          e.id as employee_id,
-          e.en_no,
-          e.name as employee_name,
+      SELECT 
+        pr.*,
+        e.id as employee_id,
+        e.en_no,
+        e.name as employee_name,
           e.department,
           ws.shift_type,
           ws.break_minutes
-        FROM processed_records pr
-        JOIN employees e ON pr.employee_id = e.id
+      FROM processed_records pr
+      JOIN employees e ON pr.employee_id = e.id
         LEFT JOIN work_schedules ws ON ws.employee_id = e.id 
           AND ws.day_of_week = CAST(strftime('%w', pr.date) AS INTEGER)
           AND CAST(strftime('%w', pr.date) AS INTEGER) BETWEEN 1 AND 6
-        WHERE 1=1
-      `;
+      WHERE 1=1
+    `;
     }
     
     const params: any[] = [];
@@ -158,6 +158,10 @@ export async function GET(request: NextRequest) {
         occurrence_lunch_exit: report.occurrence_lunch_exit || false, // Ocorrência na saída do almoço
         occurrence_afternoon_entry: report.occurrence_afternoon_entry || false, // Ocorrência na entrada da tarde
         occurrence_final_exit: report.occurrence_final_exit || false, // Ocorrência na saída final
+        is_manual_morning_entry: report.is_manual_morning_entry || false, // Batida de entrada da manhã corrigida manualmente
+        is_manual_lunch_exit: report.is_manual_lunch_exit || false, // Batida de saída do almoço corrigida manualmente
+        is_manual_afternoon_entry: report.is_manual_afternoon_entry || false, // Batida de entrada da tarde corrigida manualmente
+        is_manual_final_exit: report.is_manual_final_exit || false, // Batida de saída final corrigida manualmente
         shift_type: report.shift_type || 'FULL_DAY', // Tipo de turno
         break_minutes: report.break_minutes || null, // Minutos do intervalo
       };

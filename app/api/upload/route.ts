@@ -115,53 +115,8 @@ export async function POST(request: NextRequest) {
         .filter((date): date is string => date !== null)
     );
     
-    // Restaurar ocorrências após recálculo
-    const restoreOccurrences = async () => {
-      if (savedOccurrences.size === 0) return;
-      
-      const { query } = await import('@/infrastructure/database');
-      logger.info(`Restaurando ${savedOccurrences.size} ocorrência(s)...`);
-      
-      for (const [key, occ] of savedOccurrences.entries()) {
-        const [employeeId, date] = key.split('-');
-        try {
-          await query(
-            `UPDATE processed_records 
-             SET occurrence_type = $1,
-                 occurrence_hours_minutes = $2,
-                 occurrence_duration = $3,
-                 occurrence_morning_entry = $4,
-                 occurrence_lunch_exit = $5,
-                 occurrence_afternoon_entry = $6,
-                 occurrence_final_exit = $7
-             WHERE employee_id = $8 AND date = $9`,
-            [
-              occ.occurrence_type,
-              occ.occurrence_hours_minutes,
-              occ.occurrence_duration,
-              occ.occurrence_morning_entry || false,
-              occ.occurrence_lunch_exit || false,
-              occ.occurrence_afternoon_entry || false,
-              occ.occurrence_final_exit || false,
-              parseInt(employeeId),
-              date
-            ]
-          );
-        } catch (error: any) {
-          logger.error(`Erro ao restaurar ocorrência para ${key}:`, error);
-        }
-      }
-      
-      // Recalcular após restaurar ocorrências para ajustar saldos
-      for (const date of uniqueDates) {
-        try {
-          await calculateDailyRecords(date);
-        } catch (error: any) {
-          logger.error(`Erro ao recalcular após restaurar ocorrências para data ${date}:`, error);
-        }
-      }
-    };
-    
+    // Calcular registros processados para todas as datas únicas
+    // IMPORTANTE: Fazer isso antes de restaurar ocorrências para garantir que os registros existam
     for (const date of uniqueDates) {
       try {
         await calculateDailyRecords(date);
@@ -171,8 +126,70 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Restaurar ocorrências após todos os cálculos
-    await restoreOccurrences();
+    // Restaurar ocorrências após recálculo
+    // IMPORTANTE: Fazer UPDATE diretamente para garantir que as ocorrências sejam preservadas
+    if (savedOccurrences.size > 0) {
+      const { query } = await import('@/infrastructure/database');
+      logger.info(`Restaurando ${savedOccurrences.size} ocorrência(s)...`);
+      
+      for (const [key, occ] of savedOccurrences.entries()) {
+        const [employeeId, date] = key.split('-');
+        try {
+          // Verificar se o registro existe antes de atualizar
+          const existingRecord = await query(
+            `SELECT id FROM processed_records WHERE employee_id = $1 AND date = $2`,
+            [parseInt(employeeId), date]
+          );
+          
+          if (existingRecord.length > 0) {
+            // Se o registro existe, fazer UPDATE das ocorrências
+            await query(
+              `UPDATE processed_records 
+               SET occurrence_type = $1,
+                   occurrence_hours_minutes = $2,
+                   occurrence_duration = $3,
+                   occurrence_morning_entry = $4,
+                   occurrence_lunch_exit = $5,
+                   occurrence_afternoon_entry = $6,
+                   occurrence_final_exit = $7
+               WHERE employee_id = $8 AND date = $9`,
+              [
+                occ.occurrence_type,
+                occ.occurrence_hours_minutes,
+                occ.occurrence_duration,
+                occ.occurrence_morning_entry || false,
+                occ.occurrence_lunch_exit || false,
+                occ.occurrence_afternoon_entry || false,
+                occ.occurrence_final_exit || false,
+                parseInt(employeeId),
+                date
+              ]
+            );
+            logger.info(`Ocorrência restaurada para funcionário ${employeeId} na data ${date}`);
+          } else {
+            logger.warn(`Registro não encontrado para funcionário ${employeeId} na data ${date} - ocorrência não pode ser restaurada`);
+          }
+        } catch (error: any) {
+          logger.error(`Erro ao restaurar ocorrência para ${key}:`, error);
+        }
+      }
+      
+      // Recalcular apenas as datas que tiveram ocorrências restauradas para ajustar saldos
+      const datesToRecalculate = new Set<string>();
+      for (const [key] of savedOccurrences.entries()) {
+        const [, date] = key.split('-');
+        datesToRecalculate.add(date);
+      }
+      
+      for (const date of datesToRecalculate) {
+        try {
+          await calculateDailyRecords(date);
+          logger.info(`Recálculo concluído para data ${date} após restaurar ocorrências`);
+        } catch (error: any) {
+          logger.error(`Erro ao recalcular após restaurar ocorrências para data ${date}:`, error);
+        }
+      }
+    }
     
     return NextResponse.json({
       success: true,

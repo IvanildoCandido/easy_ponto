@@ -4,10 +4,12 @@ import { useState } from 'react';
 import Image from 'next/image';
 import FileUpload from '@/components/FileUpload';
 import ScheduleConfig from '@/components/ScheduleConfig';
+import ScheduleOverrides from '@/components/ScheduleOverrides';
 import ReportsView from '@/components/ReportsView';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'upload' | 'schedules' | 'reports'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'schedules' | 'schedule-overrides' | 'reports'>('upload');
+  const [scheduleSubTab, setScheduleSubTab] = useState<'config' | 'overrides'>('config');
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-primary-50/30 to-accent-50/20">
@@ -98,7 +100,37 @@ export default function Home() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="card-hover">
           {activeTab === 'upload' && <FileUpload />}
-          {activeTab === 'schedules' && <ScheduleConfig />}
+          {activeTab === 'schedules' && (
+            <div className="space-y-6">
+              {/* Sub-navegação para horários */}
+              <div className="flex space-x-2 border-b border-neutral-200">
+                <button
+                  onClick={() => setScheduleSubTab('config')}
+                  className={`px-4 py-2 font-semibold text-sm transition-colors ${
+                    scheduleSubTab === 'config'
+                      ? 'text-primary-600 border-b-2 border-primary-600'
+                      : 'text-neutral-600 hover:text-primary-600'
+                  }`}
+                >
+                  Horários Padrão
+                </button>
+                <button
+                  onClick={() => setScheduleSubTab('overrides')}
+                  className={`px-4 py-2 font-semibold text-sm transition-colors ${
+                    scheduleSubTab === 'overrides'
+                      ? 'text-primary-600 border-b-2 border-primary-600'
+                      : 'text-neutral-600 hover:text-primary-600'
+                  }`}
+                >
+                  Horários Excepcionais
+                </button>
+              </div>
+              
+              {scheduleSubTab === 'config' && <ScheduleConfig />}
+              {scheduleSubTab === 'overrides' && <ScheduleOverrides />}
+            </div>
+          )}
+          {activeTab === 'schedule-overrides' && <ScheduleOverrides />}
           {activeTab === 'reports' && <ReportsView />}
         </div>
       </main>

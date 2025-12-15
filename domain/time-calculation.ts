@@ -16,7 +16,7 @@
 
 import { parse } from 'date-fns';
 import { toMinutesFloor, calculateSecondsDifference, timeToSeconds } from './time-utils';
-import { applyCltTolerance, computeStartEndDeltas } from './clt-tolerance';
+import { applyCltTolerance, computeStartEndDeltas, type CompensationType } from './clt-tolerance';
 
 export interface PunchTimes {
   morningEntry: string | null;      // Entrada manhã
@@ -51,13 +51,18 @@ export interface DaySummary {
   intervalExcessSeconds: number;      // Excesso de intervalo do almoço (em segundos)
   intervalExcessMinutes: number;      // Excesso de intervalo do almoço (em minutos)
   
-  // Cálculo CLT (art. 58 §1º + Súmula 366 TST)
-  // Tolerância: 5 min por marcação, máximo 10 min no dia (apenas início/fim da jornada)
+  // Cálculo CLT (art. 58 §1º)
+  // Aplicando tolerância conforme Art. 58 §1º CLT:
+  // - Regra dos 5 minutos por batida: se diferença <= 5min, zera; se > 5min, considera o total
+  // - Teto diário de 10 minutos: se soma entre -10 e +10, zera tudo; se ultrapassar, considera total
+  // - Tratamento diferente para Banco de Horas (netting) vs Pagamento em Folha (separado)
   atrasoCltMinutes: number;          // Atraso CLT (após tolerância)
   chegadaAntecCltMinutes: number;    // Chegada antecipada CLT (após tolerância)
   extraCltMinutes: number;            // Hora extra CLT (após tolerância)
   saidaAntecCltMinutes: number;      // Saída antecipada CLT (após tolerância)
-  saldoCltMinutes: number;            // SALDO_CLT = (extra + chegada_antec) - (atraso + saida_antec)
+  saldoCltMinutes: number;            // SALDO_CLT: Banco de Horas = saldo líquido; Pagamento = 0 (valores separados)
+  extraParaPagamento?: number;        // Apenas para PAGAMENTO_FOLHA: minutos de hora extra para pagamento com adicional
+  faltaParaDesconto?: number;         // Apenas para PAGAMENTO_FOLHA: minutos de falta/atraso para desconto em folha
   
   // Detalhamento por período
   morningWorkedSeconds: number;      // Segundos trabalhados de manhã
@@ -370,16 +375,20 @@ function calculateIndicators(
 /**
  * Calcula excesso de intervalo do almoço
  * IMPORTANTE: Este é um indicador separado, NÃO é atraso
+ * Considera tolerância configurável: apenas excede se ultrapassar o intervalo previsto + tolerância
  */
 function calculateIntervalExcess(
   punches: PunchTimes,
   schedule: ScheduledTimes,
-  workDate: string
+  workDate: string,
+  intervalToleranceMinutes: number = 0,
+  singleShiftInfo?: { shiftType: 'MORNING_ONLY' | 'AFTERNOON_ONLY'; breakMinutes: number }
 ): {
   intervalExcessSeconds: number;
   intervalExcessMinutes: number;
 } {
-  if (!punches.lunchExit || !punches.afternoonEntry || !schedule.morningEnd || !schedule.afternoonStart) {
+  // Verificar se há as batidas necessárias para calcular intervalo
+  if (!punches.lunchExit || !punches.afternoonEntry) {
     return {
       intervalExcessSeconds: 0,
       intervalExcessMinutes: 0,
@@ -387,16 +396,35 @@ function calculateIntervalExcess(
   }
 
   try {
-    // Intervalo real: entrada tarde - saída almoço
+    // Intervalo real: entrada pós-intervalo - saída intervalo
     const lunchExit = parse(punches.lunchExit, 'yyyy-MM-dd HH:mm:ss', new Date());
     const afternoonEntry = parse(punches.afternoonEntry, 'yyyy-MM-dd HH:mm:ss', new Date());
     const intervalRealSeconds = calculateSecondsDifference(lunchExit, afternoonEntry);
 
-    // Intervalo previsto: entrada tarde prevista - saída almoço prevista
-    const intervalExpectedSeconds = timeToSeconds(schedule.afternoonStart) - timeToSeconds(schedule.morningEnd);
+    let intervalExpectedSeconds: number;
+
+    // Para turno único: usar breakMinutes do schedule
+    if (singleShiftInfo && singleShiftInfo.breakMinutes) {
+      // Intervalo previsto é o breakMinutes convertido para segundos
+      intervalExpectedSeconds = singleShiftInfo.breakMinutes * 60;
+    } else if (schedule.morningEnd && schedule.afternoonStart) {
+      // Jornada completa: intervalo previsto = entrada tarde prevista - saída almoço prevista
+      intervalExpectedSeconds = timeToSeconds(schedule.afternoonStart) - timeToSeconds(schedule.morningEnd);
+    } else {
+      // Não há informação suficiente para calcular
+      return {
+        intervalExcessSeconds: 0,
+        intervalExcessMinutes: 0,
+      };
+    }
     
-    // Excesso = max(0, real - previsto)
-    const excessSeconds = Math.max(0, intervalRealSeconds - intervalExpectedSeconds);
+    // Tolerância em segundos
+    const toleranceSeconds = intervalToleranceMinutes * 60;
+    
+    // Excesso = max(0, real - (previsto + tolerância))
+    // Se o intervalo real for menor ou igual ao previsto + tolerância, não há excesso
+    const allowedIntervalSeconds = intervalExpectedSeconds + toleranceSeconds;
+    const excessSeconds = Math.max(0, intervalRealSeconds - allowedIntervalSeconds);
     const excessMinutes = toMinutesFloor(excessSeconds);
 
     return {
@@ -418,13 +446,17 @@ function calculateIntervalExcess(
  * @param schedule - Horários previstos
  * @param workDate - Data de trabalho (formato: 'yyyy-MM-dd')
  * @param singleShiftInfo - Informações para turno único (horistas com intervalo de 20min)
+ * @param intervalToleranceMinutes - Tolerância de intervalo em minutos (padrão: 0)
+ * @param compensationType - Tipo de compensação: 'BANCO_DE_HORAS' ou 'PAGAMENTO_FOLHA' (padrão: 'BANCO_DE_HORAS')
  * @returns DaySummary com todos os cálculos e logs detalhados
  */
 export function computeDaySummaryV2(
   punches: PunchTimes,
   schedule: ScheduledTimes,
   workDate: string,
-  singleShiftInfo?: { shiftType: 'MORNING_ONLY' | 'AFTERNOON_ONLY'; breakMinutes: number }
+  singleShiftInfo?: { shiftType: 'MORNING_ONLY' | 'AFTERNOON_ONLY'; breakMinutes: number },
+  intervalToleranceMinutes: number = 0,
+  compensationType: CompensationType = 'BANCO_DE_HORAS'
 ): DaySummary {
   const logs: string[] = [];
 
@@ -494,17 +526,29 @@ export function computeDaySummaryV2(
 
   // ============================================
   // (E) CALCULAR EXCESSO DE INTERVALO (indicador separado, NÃO é atraso)
+  // Considera tolerância configurável: apenas excede se ultrapassar o intervalo previsto + tolerância
+  // Para turno único: usa breakMinutes como intervalo previsto
   // ============================================
-  const intervalExcess = calculateIntervalExcess(punches, schedule, workDate);
+  const intervalExcess = calculateIntervalExcess(punches, schedule, workDate, intervalToleranceMinutes, singleShiftInfo);
   
   if (intervalExcess.intervalExcessSeconds > 0) {
     logs.push(`⚠️ Excesso de intervalo do almoço: ${intervalExcess.intervalExcessSeconds}s (${intervalExcess.intervalExcessMinutes}min)`);
-    logs.push(`  (Este é um indicador separado, NÃO é atraso)`);
+    if (intervalToleranceMinutes > 0) {
+      logs.push(`  (Tolerância de ${intervalToleranceMinutes}min aplicada. Este é um indicador separado, NÃO é atraso)`);
+    } else {
+      logs.push(`  (Este é um indicador separado, NÃO é atraso)`);
+    }
+  } else if (intervalToleranceMinutes > 0) {
+    logs.push(`✓ Intervalo dentro da tolerância permitida (${intervalToleranceMinutes}min)`);
   }
 
   // ============================================
-  // (F) CALCULAR VALORES CLT (art. 58 §1º + Súmula 366 TST)
-  // Tolerância: 5 min por marcação, máximo 10 min no dia (apenas início/fim da jornada)
+  // (F) CALCULAR VALORES CLT (art. 58 §1º)
+  // Aplicando tolerância conforme Art. 58 §1º CLT:
+  // - Regra dos 5 minutos por batida
+  // - Teto diário de 10 minutos
+  // - Tratamento diferente para Banco de Horas vs Pagamento em Folha
+  // IMPORTANTE: Excesso de intervalo é descontado das horas extras
   // ============================================
   const { deltaStart, deltaEnd } = computeStartEndDeltas(punches, schedule, workDate, singleShiftInfo);
   
@@ -513,22 +557,123 @@ export function computeDaySummaryV2(
   let extraCltMinutes = 0;
   let saidaAntecCltMinutes = 0;
   let saldoCltMinutes = 0;
+  let extraParaPagamento: number | undefined = undefined;
+  let faltaParaDesconto: number | undefined = undefined;
   
   if (deltaStart !== null && deltaEnd !== null) {
-    const cltValues = applyCltTolerance(deltaStart, deltaEnd);
-    atrasoCltMinutes = cltValues.atrasoCltMinutes;
-    chegadaAntecCltMinutes = cltValues.chegadaAntecCltMinutes;
-    extraCltMinutes = cltValues.extraCltMinutes;
-    saidaAntecCltMinutes = cltValues.saidaAntecCltMinutes;
-    saldoCltMinutes = cltValues.saldoCltMinutes;
+    // Aplicar tolerância CLT (regra dos 5min por batida)
+    // IMPORTANTE: Esta função aplica o teto de 10min, mas precisamos usar os valores BRUTOS
+    // para descontar o excesso de intervalo ANTES de aplicar o teto
+    const cltValues = applyCltTolerance(deltaStart, deltaEnd, compensationType);
     
-    logs.push(`Cálculo CLT (art. 58 §1º + Súmula 366 TST):`);
-    logs.push(`  Delta início: ${deltaStart}min, Delta fim: ${deltaEnd}min`);
-    logs.push(`  ATRASO_CLT: ${atrasoCltMinutes}min`);
-    logs.push(`  CHEGADA_ANTEC_CLT: ${chegadaAntecCltMinutes}min`);
-    logs.push(`  EXTRA_CLT: ${extraCltMinutes}min`);
-    logs.push(`  SAIDA_ANTEC_CLT: ${saidaAntecCltMinutes}min`);
-    logs.push(`  SALDO_CLT: ${saldoCltMinutes}min (para fins de pagamento/banco de horas legal)`);
+    // Usar valores BRUTOS (após regra dos 5min, mas ANTES do teto)
+    // Estes são os valores que podem ser usados para descontar excesso de intervalo
+    let extraBrutoMinutes = cltValues.extraBrutoMinutes;
+    let chegadaAntecBrutoMinutes = cltValues.chegadaAntecBrutoMinutes;
+    let atrasoBrutoMinutes = cltValues.atrasoBrutoMinutes;
+    let saidaAntecBrutoMinutes = cltValues.saidaAntecBrutoMinutes;
+    
+    logs.push(`=== CÁLCULO CLT - Art. 58 §1º ===`);
+    logs.push(`Delta inicial: entrada=${deltaStart}min, saída=${deltaEnd}min`);
+    logs.push(`Tipo de compensação: ${compensationType === 'BANCO_DE_HORAS' ? 'Banco de Horas' : 'Pagamento em Folha'}`);
+    logs.push(`[REGRA 5min] Entrada: diferença ${deltaStart}min → ${Math.abs(deltaStart) <= 5 ? 'tolerado (zera)' : `não tolerado (considera ${deltaStart}min)`}`);
+    logs.push(`[REGRA 5min] Saída: diferença ${deltaEnd}min → ${Math.abs(deltaEnd) <= 5 ? 'tolerado (zera)' : `não tolerado (considera ${deltaEnd}min)`}`);
+    logs.push(`Saldo bruto após regra dos 5min: ${cltValues.saldoBrutoDia}min`);
+    
+    // IMPORTANTE: Aplicar excesso de intervalo ANTES de aplicar o teto
+    // O excesso de intervalo representa tempo que o funcionário ficou a mais sem trabalhar
+    // Se houver horas extras: desconta do extra
+    // Se não houver horas extras: aumenta o débito (atraso)
+    if (intervalExcess.intervalExcessMinutes > 0) {
+      const excessoIntervalo = intervalExcess.intervalExcessMinutes;
+      
+      if (extraBrutoMinutes > 0) {
+        // Caso 1: Há horas extras → desconta do extra
+        const extraBeforeDeduction = extraBrutoMinutes;
+        extraBrutoMinutes = Math.max(0, extraBrutoMinutes - excessoIntervalo);
+        const deduction = extraBeforeDeduction - extraBrutoMinutes;
+        if (deduction > 0) {
+          logs.push(`⚠️ Excesso de intervalo de ${excessoIntervalo}min descontado das horas extras ANTES do teto`);
+          logs.push(`  EXTRA bruto antes: ${extraBeforeDeduction}min, após desconto: ${extraBrutoMinutes}min`);
+        }
+        
+        // Se ainda sobrou excesso após descontar do extra, aumentar o débito
+        const excessoRestante = excessoIntervalo - deduction;
+        if (excessoRestante > 0) {
+          atrasoBrutoMinutes += excessoRestante;
+          logs.push(`⚠️ Excesso de intervalo restante (${excessoRestante}min) adicionado ao atraso`);
+        }
+      } else if (chegadaAntecBrutoMinutes > 0) {
+        // Caso 2: Não há extra, mas há chegada antecipada → desconta da chegada antecipada
+        const chegadaAntecAntes = chegadaAntecBrutoMinutes;
+        chegadaAntecBrutoMinutes = Math.max(0, chegadaAntecBrutoMinutes - excessoIntervalo);
+        const deduction = chegadaAntecAntes - chegadaAntecBrutoMinutes;
+        
+        // Se ainda sobrou excesso, aumentar o débito
+        const excessoRestante = excessoIntervalo - deduction;
+        if (excessoRestante > 0) {
+          atrasoBrutoMinutes += excessoRestante;
+          logs.push(`⚠️ Excesso de intervalo (${excessoIntervalo}min): ${deduction}min descontado da chegada antecipada, ${excessoRestante}min adicionado ao atraso`);
+        } else {
+          logs.push(`⚠️ Excesso de intervalo de ${excessoIntervalo}min descontado da chegada antecipada`);
+        }
+      } else {
+        // Caso 3: Não há saldo positivo → aumenta o débito (atraso)
+        atrasoBrutoMinutes += excessoIntervalo;
+        logs.push(`⚠️ Excesso de intervalo de ${excessoIntervalo}min adicionado ao atraso (não havia horas extras para descontar)`);
+      }
+    }
+    
+    // Agora calcular saldo bruto após aplicar excesso de intervalo
+    const saldoBrutoAposDeduction = (extraBrutoMinutes + chegadaAntecBrutoMinutes) - (atrasoBrutoMinutes + saidaAntecBrutoMinutes);
+    logs.push(`Saldo bruto após aplicar excesso de intervalo: ${saldoBrutoAposDeduction}min`);
+    
+    // Aplicar teto de 10 minutos no saldo após desconto
+    const TOLERANCE_DAILY_RANGE_MINUTES = 10;
+    if (saldoBrutoAposDeduction >= -TOLERANCE_DAILY_RANGE_MINUTES && saldoBrutoAposDeduction <= TOLERANCE_DAILY_RANGE_MINUTES) {
+      // Dentro do teto diário: zera tudo
+      logs.push(`[REGRA 10min] Saldo ${saldoBrutoAposDeduction}min (após desconto de excesso de intervalo) está entre -10 e +10min → ZERA TUDO (teto diário aplicado)`);
+      atrasoCltMinutes = 0;
+      chegadaAntecCltMinutes = 0;
+      extraCltMinutes = 0;
+      saidaAntecCltMinutes = 0;
+    } else {
+      // Fora do teto: mantém os valores após desconto
+      logs.push(`[REGRA 10min] Saldo ${saldoBrutoAposDeduction}min ultrapassa teto de ±10min → mantém valores após desconto de excesso`);
+      atrasoCltMinutes = atrasoBrutoMinutes;
+      chegadaAntecCltMinutes = chegadaAntecBrutoMinutes;
+      extraCltMinutes = extraBrutoMinutes;
+      saidaAntecCltMinutes = saidaAntecBrutoMinutes;
+    }
+    
+    // Aplicar excesso de intervalo também nos valores de pagamento (se aplicável)
+    // Usa os mesmos valores já calculados acima (extraBrutoMinutes, chegadaAntecBrutoMinutes, atrasoBrutoMinutes)
+    if (compensationType === 'PAGAMENTO_FOLHA') {
+      // Para pagamento, usa os valores brutos já ajustados pelo excesso de intervalo
+      let extraParaPagBruto = extraBrutoMinutes + chegadaAntecBrutoMinutes;
+      faltaParaDesconto = atrasoBrutoMinutes + saidaAntecBrutoMinutes;
+      
+      // Aplicar teto também para pagamento
+      const saldoPagBruto = extraParaPagBruto - faltaParaDesconto;
+      if (saldoPagBruto >= -TOLERANCE_DAILY_RANGE_MINUTES && saldoPagBruto <= TOLERANCE_DAILY_RANGE_MINUTES) {
+        extraParaPagamento = 0;
+        faltaParaDesconto = 0;
+      } else {
+        extraParaPagamento = extraParaPagBruto;
+        // faltaParaDesconto já está calculado acima
+      }
+    }
+    
+    // Recalcular saldo conforme tipo de compensação
+    if (compensationType === 'BANCO_DE_HORAS') {
+      // Banco de Horas: netting (soma saldo líquido)
+      saldoCltMinutes = (extraCltMinutes + chegadaAntecCltMinutes) - (atrasoCltMinutes + saidaAntecCltMinutes);
+      logs.push(`[BANCO DE HORAS] Saldo líquido final: ${saldoCltMinutes}min`);
+    } else {
+      // Pagamento em Folha: saldo é 0 (não faz netting, valores são separados)
+      saldoCltMinutes = 0;
+      logs.push(`[PAGAMENTO EM FOLHA] Hora Extra: ${extraParaPagamento}min, Falta/Atraso: ${faltaParaDesconto}min`);
+    }
   }
 
   if (status === 'INCONSISTENTE') {
@@ -554,7 +699,9 @@ export function computeDaySummaryV2(
     chegadaAntecCltMinutes,
     extraCltMinutes,
     saidaAntecCltMinutes,
-    saldoCltMinutes, // SALDO_CLT (para fins de pagamento/banco de horas legal)
+    saldoCltMinutes, // SALDO_CLT: Banco de Horas = saldo líquido; Pagamento = 0 (valores separados)
+    extraParaPagamento, // Apenas para PAGAMENTO_FOLHA
+    faltaParaDesconto, // Apenas para PAGAMENTO_FOLHA
     morningWorkedSeconds: worked.morningSeconds,
     afternoonWorkedSeconds: worked.afternoonSeconds,
     morningExpectedSeconds: expected.morningSeconds,

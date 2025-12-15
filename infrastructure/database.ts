@@ -37,6 +37,7 @@ if (!useSupabase) {
       en_no INTEGER UNIQUE NOT NULL,
       name TEXT NOT NULL,
       department TEXT,
+      compensation_type TEXT CHECK(compensation_type IN ('BANCO_DE_HORAS', 'PAGAMENTO_FOLHA')) DEFAULT 'BANCO_DE_HORAS',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -50,9 +51,30 @@ if (!useSupabase) {
       afternoon_end TEXT,
       shift_type TEXT CHECK(shift_type IN ('FULL_DAY', 'MORNING_ONLY', 'AFTERNOON_ONLY')),
       break_minutes INTEGER DEFAULT NULL,
+      interval_tolerance_minutes INTEGER DEFAULT NULL,
       FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
       UNIQUE(employee_id, day_of_week)
     );
+
+    CREATE TABLE IF NOT EXISTS schedule_overrides (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      morning_start TEXT,
+      morning_end TEXT,
+      afternoon_start TEXT,
+      afternoon_end TEXT,
+      shift_type TEXT CHECK(shift_type IN ('FULL_DAY', 'MORNING_ONLY', 'AFTERNOON_ONLY')),
+      break_minutes INTEGER DEFAULT NULL,
+      interval_tolerance_minutes INTEGER DEFAULT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      UNIQUE(employee_id, date)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_schedule_overrides_employee_date ON schedule_overrides(employee_id, date);
+    CREATE INDEX IF NOT EXISTS idx_schedule_overrides_date ON schedule_overrides(date);
 
     CREATE TABLE IF NOT EXISTS time_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,6 +127,25 @@ if (!useSupabase) {
       UNIQUE(employee_id, date)
     );
 
+    CREATE TABLE IF NOT EXISTS manual_punch_corrections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      morning_entry TEXT,
+      lunch_exit TEXT,
+      afternoon_entry TEXT,
+      final_exit TEXT,
+      corrected_by TEXT,
+      correction_reason TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      UNIQUE(employee_id, date)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_manual_punch_corrections_employee_date ON manual_punch_corrections(employee_id, date);
+    CREATE INDEX IF NOT EXISTS idx_manual_punch_corrections_date ON manual_punch_corrections(date);
+
     CREATE INDEX IF NOT EXISTS idx_time_records_employee_date ON time_records(employee_id, datetime);
     CREATE INDEX IF NOT EXISTS idx_processed_records_employee_date ON processed_records(employee_id, date);
   `);
@@ -121,6 +162,22 @@ if (!useSupabase) {
   try {
     sqliteDb.exec(`
       ALTER TABLE work_schedules ADD COLUMN break_minutes INTEGER DEFAULT NULL;
+    `);
+  } catch (e: any) {
+    // Coluna já existe, ignorar erro
+  }
+  
+  try {
+    sqliteDb.exec(`
+      ALTER TABLE work_schedules ADD COLUMN interval_tolerance_minutes INTEGER DEFAULT NULL;
+    `);
+  } catch (e: any) {
+    // Coluna já existe, ignorar erro
+  }
+  
+  try {
+    sqliteDb.exec(`
+      ALTER TABLE employees ADD COLUMN compensation_type TEXT CHECK(compensation_type IN ('BANCO_DE_HORAS', 'PAGAMENTO_FOLHA')) DEFAULT 'BANCO_DE_HORAS';
     `);
   } catch (e: any) {
     // Coluna já existe, ignorar erro
@@ -154,6 +211,10 @@ if (!useSupabase) {
     { name: 'occurrence_lunch_exit', type: 'INTEGER DEFAULT 0' },
     { name: 'occurrence_afternoon_entry', type: 'INTEGER DEFAULT 0' },
     { name: 'occurrence_final_exit', type: 'INTEGER DEFAULT 0' },
+    { name: 'is_manual_morning_entry', type: 'INTEGER DEFAULT 0' },
+    { name: 'is_manual_lunch_exit', type: 'INTEGER DEFAULT 0' },
+    { name: 'is_manual_afternoon_entry', type: 'INTEGER DEFAULT 0' },
+    { name: 'is_manual_final_exit', type: 'INTEGER DEFAULT 0' },
   ];
   
   for (const col of newColumns) {

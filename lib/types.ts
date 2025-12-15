@@ -16,6 +16,7 @@ export interface Employee {
   en_no: number;
   name: string;
   department: string;
+  compensation_type?: 'BANCO_DE_HORAS' | 'PAGAMENTO_FOLHA' | null; // Tipo de compensação: Banco de Horas ou Pagamento em Folha
   created_at: string;
 }
 
@@ -29,7 +30,27 @@ export interface WorkSchedule {
   afternoon_end: string | null; // HH:mm - Saída tarde (null se não trabalha de tarde)
   shift_type?: 'FULL_DAY' | 'MORNING_ONLY' | 'AFTERNOON_ONLY' | null; // Tipo de turno (FULL_DAY = padrão)
   break_minutes?: number | null; // Minutos do intervalo obrigatório (ex: 20 para horistas)
+  interval_tolerance_minutes?: number | null; // Tolerância de intervalo em minutos (ex: 20 para permitir até 20min a mais no intervalo sem considerar excesso)
 }
+
+export interface ScheduleOverride {
+  id?: number;
+  employee_id: number;
+  date: string; // Data no formato 'yyyy-MM-dd' - data específica para este horário
+  morning_start: string | null;
+  morning_end: string | null;
+  afternoon_start: string | null;
+  afternoon_end: string | null;
+  shift_type?: 'FULL_DAY' | 'MORNING_ONLY' | 'AFTERNOON_ONLY' | null;
+  break_minutes?: number | null;
+  interval_tolerance_minutes?: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Manter compatibilidade com código antigo (deprecated)
+/** @deprecated Use ScheduleOverride instead */
+export interface WorkScheduleException extends ScheduleOverride {}
 
 export interface ProcessedRecord {
   id: number;
