@@ -4,9 +4,9 @@
  * REGRA LEGAL (Art. 58, § 1º da CLT):
  * - Tolerância de 5 minutos por batida (entrada ou saída)
  * - Se diferença <= 5 minutos (para mais ou para menos), considera como 0
- * - Se diferença > 5 minutos, considera o tempo TOTAL da diferença (não apenas o excedente)
+ * - Se diferença > 5 minutos, considera apenas o EXCEDENTE (diferença - 5 minutos)
  * - Teto diário: Se soma total das variações estiver entre -10 e +10 minutos, zera o saldo do dia
- * - Se ultrapassar o teto, considera o valor TOTAL calculado
+ * - Se ultrapassar o teto, considera o valor calculado (após aplicar tolerância individual)
  * 
  * Tratamento do Resultado Final:
  * - Banco de Horas: Faz netting (soma saldo líquido: positivos - negativos)
@@ -58,7 +58,7 @@ export interface CltToleranceResult {
  * 
  * PASSO 1: Regra dos 5 minutos por batida
  * - Se |diferença| <= 5min: considera 0
- * - Se |diferença| > 5min: considera o TOTAL (não apenas excedente)
+ * - Se |diferença| > 5min: considera apenas o EXCEDENTE (|diferença| - 5min)
  * 
  * PASSO 2: Teto diário de 10 minutos
  * - Se soma total entre -10 e +10: zera tudo
@@ -87,7 +87,7 @@ export function applyCltTolerance(
   // ============================================
   // PASSO 1: REGRA DOS 5 MINUTOS POR BATIDA
   // ============================================
-  // Se |Δ| <= 5min, considera 0. Se |Δ| > 5min, considera o TOTAL
+  // Se |Δ| <= 5min, considera 0. Se |Δ| > 5min, considera o EXCEDENTE (diferença - 5)
   
   let atrasoBrutoMinutes = 0;
   let chegadaAntecBrutoMinutes = 0;
@@ -103,15 +103,16 @@ export function applyCltTolerance(
       logs.push(`[REGRA 5min] Entrada: diferença ${deltaStart}min (abs=${absStart}min) <= 5min → ZERA (tolerado)`);
       // Não adiciona nada (já está em 0)
     } else {
-      // Fora da tolerância: considera o TOTAL (não apenas excedente)
-      logs.push(`[REGRA 5min] Entrada: diferença ${deltaStart}min (abs=${absStart}min) > 5min → considera TOTAL (${deltaStart}min)`);
+      // Fora da tolerância: considera o EXCEDENTE (abs - 5)
+      const excedente = absStart - TOLERANCE_PER_PUNCH_MINUTES;
+      logs.push(`[REGRA 5min] Entrada: diferença ${deltaStart}min (abs=${absStart}min) > 5min → considera EXCEDENTE (${excedente}min = ${absStart}min - 5min)`);
       
       if (deltaStart > 0) {
         // Atraso
-        atrasoBrutoMinutes = deltaStart; // TOTAL, não apenas excedente
+        atrasoBrutoMinutes = excedente;
       } else {
         // Chegada antecipada (deltaStart < 0)
-        chegadaAntecBrutoMinutes = absStart; // TOTAL, não apenas excedente
+        chegadaAntecBrutoMinutes = excedente;
       }
     }
   }
@@ -125,15 +126,16 @@ export function applyCltTolerance(
       logs.push(`[REGRA 5min] Saída: diferença ${deltaEnd}min (abs=${absEnd}min) <= 5min → ZERA (tolerado)`);
       // Não adiciona nada (já está em 0)
     } else {
-      // Fora da tolerância: considera o TOTAL
-      logs.push(`[REGRA 5min] Saída: diferença ${deltaEnd}min (abs=${absEnd}min) > 5min → considera TOTAL (${deltaEnd}min)`);
+      // Fora da tolerância: considera o EXCEDENTE (abs - 5)
+      const excedente = absEnd - TOLERANCE_PER_PUNCH_MINUTES;
+      logs.push(`[REGRA 5min] Saída: diferença ${deltaEnd}min (abs=${absEnd}min) > 5min → considera EXCEDENTE (${excedente}min = ${absEnd}min - 5min)`);
       
       if (deltaEnd > 0) {
         // Hora extra (saída depois do horário)
-        extraBrutoMinutes = deltaEnd; // TOTAL, não apenas excedente
+        extraBrutoMinutes = excedente;
       } else {
         // Saída antecipada (deltaEnd < 0)
-        saidaAntecBrutoMinutes = absEnd; // TOTAL, não apenas excedente
+        saidaAntecBrutoMinutes = excedente;
       }
     }
   }
@@ -148,29 +150,19 @@ export function applyCltTolerance(
   // ============================================
   // PASSO 2: TETO DIÁRIO DE 10 MINUTOS
   // ============================================
-  // Se soma total entre -10 e +10: zera tudo
-  // Se ultrapassar: considera o valor TOTAL
+  // O teto de 10 minutos não zera os valores individuais, apenas afeta o cálculo final do saldo
+  // Os valores excedentes são sempre mantidos após aplicar a tolerância individual de 5 minutos
   
   let atrasoCltMinutes = atrasoBrutoMinutes;
   let chegadaAntecCltMinutes = chegadaAntecBrutoMinutes;
   let extraCltMinutes = extraBrutoMinutes;
   let saidaAntecCltMinutes = saidaAntecBrutoMinutes;
   
-  if (saldoBrutoDia >= -TOLERANCE_DAILY_RANGE_MINUTES && saldoBrutoDia <= TOLERANCE_DAILY_RANGE_MINUTES) {
-    // Dentro do teto diário: zera tudo
-    logs.push(`[REGRA 10min] Saldo ${saldoBrutoDia}min está entre -10 e +10min → ZERA TUDO (teto diário aplicado)`);
-    atrasoCltMinutes = 0;
-    chegadaAntecCltMinutes = 0;
-    extraCltMinutes = 0;
-    saidaAntecCltMinutes = 0;
-  } else {
-    // Fora do teto: mantém os valores totais
-    logs.push(`[REGRA 10min] Saldo ${saldoBrutoDia}min ultrapassa teto de ±10min → mantém valores totais`);
-    logs.push(`  ATRASO_CLT: ${atrasoCltMinutes}min`);
-    logs.push(`  CHEGADA_ANTEC_CLT: ${chegadaAntecCltMinutes}min`);
-    logs.push(`  EXTRA_CLT: ${extraCltMinutes}min`);
-    logs.push(`  SAIDA_ANTEC_CLT: ${saidaAntecCltMinutes}min`);
-  }
+  logs.push(`[REGRA 10min] Valores após tolerância individual mantidos (teto não zera valores individuais)`);
+  logs.push(`  ATRASO_CLT: ${atrasoCltMinutes}min`);
+  logs.push(`  CHEGADA_ANTEC_CLT: ${chegadaAntecCltMinutes}min`);
+  logs.push(`  EXTRA_CLT: ${extraCltMinutes}min`);
+  logs.push(`  SAIDA_ANTEC_CLT: ${saidaAntecCltMinutes}min`);
   
   // ============================================
   // PASSO 3: TRATAMENTO CONFORME TIPO DE COMPENSAÇÃO

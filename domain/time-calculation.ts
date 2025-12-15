@@ -580,71 +580,30 @@ export function computeDaySummaryV2(
     logs.push(`[REGRA 5min] Saída: diferença ${deltaEnd}min → ${Math.abs(deltaEnd) <= 5 ? 'tolerado (zera)' : `não tolerado (considera ${deltaEnd}min)`}`);
     logs.push(`Saldo bruto após regra dos 5min: ${cltValues.saldoBrutoDia}min`);
     
-    // IMPORTANTE: Aplicar excesso de intervalo ANTES de aplicar o teto
-    // O excesso de intervalo representa tempo que o funcionário ficou a mais sem trabalhar
-    // Se houver horas extras: desconta do extra
-    // Se não houver horas extras: aumenta o débito (atraso)
+    // IMPORTANTE: O excesso de intervalo é apenas um indicador separado e NÃO afeta o cálculo CLT
+    // Os valores CLT são calculados apenas com base nos deltas de entrada/saída
+    // O excesso de intervalo é registrado separadamente como informação adicional
     if (intervalExcess.intervalExcessMinutes > 0) {
-      const excessoIntervalo = intervalExcess.intervalExcessMinutes;
-      
-      if (extraBrutoMinutes > 0) {
-        // Caso 1: Há horas extras → desconta do extra
-        const extraBeforeDeduction = extraBrutoMinutes;
-        extraBrutoMinutes = Math.max(0, extraBrutoMinutes - excessoIntervalo);
-        const deduction = extraBeforeDeduction - extraBrutoMinutes;
-        if (deduction > 0) {
-          logs.push(`⚠️ Excesso de intervalo de ${excessoIntervalo}min descontado das horas extras ANTES do teto`);
-          logs.push(`  EXTRA bruto antes: ${extraBeforeDeduction}min, após desconto: ${extraBrutoMinutes}min`);
-        }
-        
-        // Se ainda sobrou excesso após descontar do extra, aumentar o débito
-        const excessoRestante = excessoIntervalo - deduction;
-        if (excessoRestante > 0) {
-          atrasoBrutoMinutes += excessoRestante;
-          logs.push(`⚠️ Excesso de intervalo restante (${excessoRestante}min) adicionado ao atraso`);
-        }
-      } else if (chegadaAntecBrutoMinutes > 0) {
-        // Caso 2: Não há extra, mas há chegada antecipada → desconta da chegada antecipada
-        const chegadaAntecAntes = chegadaAntecBrutoMinutes;
-        chegadaAntecBrutoMinutes = Math.max(0, chegadaAntecBrutoMinutes - excessoIntervalo);
-        const deduction = chegadaAntecAntes - chegadaAntecBrutoMinutes;
-        
-        // Se ainda sobrou excesso, aumentar o débito
-        const excessoRestante = excessoIntervalo - deduction;
-        if (excessoRestante > 0) {
-          atrasoBrutoMinutes += excessoRestante;
-          logs.push(`⚠️ Excesso de intervalo (${excessoIntervalo}min): ${deduction}min descontado da chegada antecipada, ${excessoRestante}min adicionado ao atraso`);
-        } else {
-          logs.push(`⚠️ Excesso de intervalo de ${excessoIntervalo}min descontado da chegada antecipada`);
-        }
-      } else {
-        // Caso 3: Não há saldo positivo → aumenta o débito (atraso)
-        atrasoBrutoMinutes += excessoIntervalo;
-        logs.push(`⚠️ Excesso de intervalo de ${excessoIntervalo}min adicionado ao atraso (não havia horas extras para descontar)`);
-      }
+      logs.push(`ℹ️ Excesso de intervalo detectado: ${intervalExcess.intervalExcessMinutes}min (indicador separado, não afeta cálculo CLT)`);
     }
     
-    // Agora calcular saldo bruto após aplicar excesso de intervalo
+    // Usar saldo bruto diretamente (sem desconto de excesso de intervalo)
     const saldoBrutoAposDeduction = (extraBrutoMinutes + chegadaAntecBrutoMinutes) - (atrasoBrutoMinutes + saidaAntecBrutoMinutes);
-    logs.push(`Saldo bruto após aplicar excesso de intervalo: ${saldoBrutoAposDeduction}min`);
+    logs.push(`Saldo bruto: ${saldoBrutoAposDeduction}min`);
     
-    // Aplicar teto de 10 minutos no saldo após desconto
-    const TOLERANCE_DAILY_RANGE_MINUTES = 10;
-    if (saldoBrutoAposDeduction >= -TOLERANCE_DAILY_RANGE_MINUTES && saldoBrutoAposDeduction <= TOLERANCE_DAILY_RANGE_MINUTES) {
-      // Dentro do teto diário: zera tudo
-      logs.push(`[REGRA 10min] Saldo ${saldoBrutoAposDeduction}min (após desconto de excesso de intervalo) está entre -10 e +10min → ZERA TUDO (teto diário aplicado)`);
-      atrasoCltMinutes = 0;
-      chegadaAntecCltMinutes = 0;
-      extraCltMinutes = 0;
-      saidaAntecCltMinutes = 0;
-    } else {
-      // Fora do teto: mantém os valores após desconto
-      logs.push(`[REGRA 10min] Saldo ${saldoBrutoAposDeduction}min ultrapassa teto de ±10min → mantém valores após desconto de excesso`);
-      atrasoCltMinutes = atrasoBrutoMinutes;
-      chegadaAntecCltMinutes = chegadaAntecBrutoMinutes;
-      extraCltMinutes = extraBrutoMinutes;
-      saidaAntecCltMinutes = saidaAntecBrutoMinutes;
-    }
+    // Aplicar valores após desconto de excesso de intervalo
+    // O teto de 10 minutos não zera os valores individuais, apenas afeta o cálculo final do saldo
+    // Os valores excedentes são sempre mantidos após aplicar a tolerância individual de 5 minutos
+    atrasoCltMinutes = atrasoBrutoMinutes;
+    chegadaAntecCltMinutes = chegadaAntecBrutoMinutes;
+    extraCltMinutes = extraBrutoMinutes;
+    saidaAntecCltMinutes = saidaAntecBrutoMinutes;
+    
+    logs.push(`[REGRA 10min] Valores após tolerância individual e desconto de excesso mantidos`);
+    logs.push(`  ATRASO_CLT: ${atrasoCltMinutes}min`);
+    logs.push(`  CHEGADA_ANTEC_CLT: ${chegadaAntecCltMinutes}min`);
+    logs.push(`  EXTRA_CLT: ${extraCltMinutes}min`);
+    logs.push(`  SAIDA_ANTEC_CLT: ${saidaAntecCltMinutes}min`);
     
     // Aplicar excesso de intervalo também nos valores de pagamento (se aplicável)
     // Usa os mesmos valores já calculados acima (extraBrutoMinutes, chegadaAntecBrutoMinutes, atrasoBrutoMinutes)
