@@ -614,6 +614,7 @@ export function computeDaySummaryV2(
       
       // Aplicar teto também para pagamento
       const saldoPagBruto = extraParaPagBruto - faltaParaDesconto;
+      const TOLERANCE_DAILY_RANGE_MINUTES = 10;
       if (saldoPagBruto >= -TOLERANCE_DAILY_RANGE_MINUTES && saldoPagBruto <= TOLERANCE_DAILY_RANGE_MINUTES) {
         extraParaPagamento = 0;
         faltaParaDesconto = 0;
