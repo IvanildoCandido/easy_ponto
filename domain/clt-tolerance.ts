@@ -284,12 +284,22 @@ export function computeStartEndDeltas(
         time: punches.morningEntry,
         scheduled: schedule.morningStart,
       };
-    } else if (punches.afternoonEntry && schedule.afternoonStart && !schedule.morningStart) {
-      // Se não trabalha de manhã, entrada tarde é a primeira entrada
-      firstEntry = {
-        time: punches.afternoonEntry,
-        scheduled: schedule.afternoonStart,
-      };
+    } else if (schedule.afternoonStart && !schedule.morningStart) {
+      // Se não trabalha de manhã (só trabalha de tarde), usar a primeira batida disponível comparada com afternoonStart
+      // Pode ser morningEntry (se for turno único mas não detectado) ou afternoonEntry
+      if (punches.morningEntry) {
+        // Turno único tarde não detectado: morningEntry é na verdade a entrada do turno da tarde
+        firstEntry = {
+          time: punches.morningEntry,
+          scheduled: schedule.afternoonStart,
+        };
+      } else if (punches.afternoonEntry) {
+        // Jornada parcial tarde: entrada tarde é a primeira entrada
+        firstEntry = {
+          time: punches.afternoonEntry,
+          scheduled: schedule.afternoonStart,
+        };
+      }
     }
     
     // Última saída (fim da jornada)

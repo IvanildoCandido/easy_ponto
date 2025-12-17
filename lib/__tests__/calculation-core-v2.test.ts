@@ -346,13 +346,13 @@ describe('Cálculo de Ponto V2 - Saldo = HorasTrabalhadas - HorasPrevistas', () 
       // Valores CLT
       // delta_start = -5, delta_end = +60
       // tolerated_start = 5, tolerated_end = 5
-      // tolerated_sum = 10 (não excedeu)
-      // chargeable_start = 5-5 = 0, chargeable_end = 60-5 = 55
+      // tolerated_sum = 10 (limite do teto)
+      // Com teto de 10min, todos os valores CLT são zerados
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(55);
+      expect(summary.extraCltMinutes).toBe(0);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(55); // 55 - 0 = 55
+      expect(summary.saldoCltMinutes).toBe(0);
     });
   });
 
@@ -383,13 +383,13 @@ describe('Cálculo de Ponto V2 - Saldo = HorasTrabalhadas - HorasPrevistas', () 
       // delta_start = 07:55 - 08:00 = -5
       // delta_end = 18:00 - 17:00 = +60
       // tolerated_start = 5, tolerated_end = 5
-      // tolerated_sum = 10 (não excedeu)
-      // chargeable_start = 5-5 = 0, chargeable_end = 60-5 = 55
+      // tolerated_sum = 10 (limite do teto)
+      // Com teto de 10min, todos os valores CLT são zerados
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0); // 5 min tolerados
-      expect(summary.extraCltMinutes).toBe(55); // 60 - 5 = 55
+      expect(summary.extraCltMinutes).toBe(0); // Zerado pelo teto de 10min
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(55); // 55 - 0 = 55
+      expect(summary.saldoCltMinutes).toBe(0);
     });
 
     test('Caso Dayana: tolerância aplicada corretamente (08-12/14-18, batidas 08:13/12:11/14:11/17:56)', () => {

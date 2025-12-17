@@ -548,7 +548,7 @@ export function computeDaySummaryV2(
   // - Regra dos 5 minutos por batida
   // - Teto diário de 10 minutos
   // - Tratamento diferente para Banco de Horas vs Pagamento em Folha
-  // IMPORTANTE: Excesso de intervalo é descontado das horas extras
+  // IMPORTANTE: Excesso de intervalo é descontado das horas extras CLT
   // ============================================
   const { deltaStart, deltaEnd } = computeStartEndDeltas(punches, schedule, workDate, singleShiftInfo);
   
@@ -587,10 +587,11 @@ export function computeDaySummaryV2(
       logs.push(`⚠️ Excesso de intervalo detectado: ${intervalExcess.intervalExcessMinutes}min (será descontado das horas extras)`);
       
       // Descontar excesso de intervalo das horas extras (prioridade: extraBruto > chegadaAntec)
+      const extraBrutoOriginal = extraBrutoMinutes;
       if (extraBrutoMinutes >= intervalExcess.intervalExcessMinutes) {
         // Se há hora extra suficiente, desconta tudo dela
         extraBrutoMinutes = extraBrutoMinutes - intervalExcess.intervalExcessMinutes;
-        logs.push(`  Descontado ${intervalExcess.intervalExcessMinutes}min do EXTRA_CLT (${cltValues.extraBrutoMinutes}min - ${intervalExcess.intervalExcessMinutes}min = ${extraBrutoMinutes}min)`);
+        logs.push(`  Descontado ${intervalExcess.intervalExcessMinutes}min do EXTRA_CLT (${extraBrutoOriginal}min - ${intervalExcess.intervalExcessMinutes}min = ${extraBrutoMinutes}min)`);
       } else if (extraBrutoMinutes > 0) {
         // Se há hora extra parcial, desconta o que pode e o restante da chegada antecipada
         const restanteExcesso = intervalExcess.intervalExcessMinutes - extraBrutoMinutes;
@@ -623,16 +624,16 @@ export function computeDaySummaryV2(
     extraCltMinutes = extraBrutoMinutes;
     saidaAntecCltMinutes = saidaAntecBrutoMinutes;
     
-    logs.push(`[REGRA 10min] Valores após tolerância individual e desconto de excesso mantidos`);
+    logs.push(`[VALORES CLT FINAIS] Após tolerância individual de 5min e desconto de excesso de intervalo:`);
     logs.push(`  ATRASO_CLT: ${atrasoCltMinutes}min`);
     logs.push(`  CHEGADA_ANTEC_CLT: ${chegadaAntecCltMinutes}min`);
     logs.push(`  EXTRA_CLT: ${extraCltMinutes}min`);
     logs.push(`  SAIDA_ANTEC_CLT: ${saidaAntecCltMinutes}min`);
     
-    // Aplicar excesso de intervalo também nos valores de pagamento (se aplicável)
+    // Aplicar valores de pagamento (se aplicável)
     // Usa os mesmos valores já calculados acima (extraBrutoMinutes, chegadaAntecBrutoMinutes, atrasoBrutoMinutes)
     if (compensationType === 'PAGAMENTO_FOLHA') {
-      // Para pagamento, usa os valores brutos já ajustados pelo excesso de intervalo
+      // Para pagamento, usa os valores brutos
       let extraParaPagBruto = extraBrutoMinutes + chegadaAntecBrutoMinutes;
       faltaParaDesconto = atrasoBrutoMinutes + saidaAntecBrutoMinutes;
       

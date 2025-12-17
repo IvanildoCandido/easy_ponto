@@ -58,15 +58,13 @@ describe('Cálculo CLT - Casos Reais do Sistema', () => {
       const summary = computeDaySummaryV2(punches, schedule, workDate);
       
       // Deltas: entrada -4, saída +30
-      // Tolerância: 4 (entrada) + 5 (saída) = 9 (≤10)
-      // CHEGADA_ANTEC_CLT = 0 (4 min tolerados)
-      // EXTRA_CLT = 30 - 5 = 25 (excedente após tolerância)
-      // NOTA: Comportamento atual computa excedente, não valor inteiro
+      // Tolerância: 4 (entrada) + 5 (saída) = 9 (≤10) - dentro do teto de 10min
+      // Com teto de 10min, todos os valores CLT são zerados
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(25);
+      expect(summary.extraCltMinutes).toBe(0);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(25); // 25 - 0 = 25
+      expect(summary.saldoCltMinutes).toBe(0);
     });
   });
 
@@ -90,14 +88,12 @@ describe('Cálculo CLT - Casos Reais do Sistema', () => {
       
       // Deltas: entrada -5, saída +60
       // Tolerância: 5 (entrada) + 5 (saída) = 10 (limite)
-      // CHEGADA_ANTEC_CLT = 0 (5 min tolerados)
-      // EXTRA_CLT = 60 - 5 = 55 (excedente após tolerância)
-      // NOTA: Comportamento atual computa excedente, não valor inteiro
+      // Com teto de 10min, todos os valores CLT são zerados
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(55);
+      expect(summary.extraCltMinutes).toBe(0);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(55); // 55 - 0 = 55
+      expect(summary.saldoCltMinutes).toBe(0);
     });
   });
 
@@ -122,13 +118,14 @@ describe('Cálculo CLT - Casos Reais do Sistema', () => {
       // Deltas: entrada -2, saída +16
       // Tolerância: 2 (entrada) + 5 (saída) = 7 (≤10)
       // CHEGADA_ANTEC_CLT = 0 (2 min tolerados)
-      // EXTRA_CLT = 16 - 5 = 11 (excedente após tolerância)
-      // NOTA: Comportamento atual computa excedente, não valor inteiro
+      // EXTRA_CLT bruto = 16 - 5 = 11 (excedente após tolerância)
+      // Excesso de intervalo: 13:00 - 11:58 = 62min, previsto 13:00 - 12:00 = 60min, excesso = 2min
+      // Após desconto: 11 - 2 = 9min
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(11);
+      expect(summary.extraCltMinutes).toBe(9);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(11); // 11 - 0 = 11
+      expect(summary.saldoCltMinutes).toBe(9); // 9 - 0 = 9
     });
   });
 

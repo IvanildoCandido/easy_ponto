@@ -114,9 +114,11 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Recalcular o registro para ajustar expected_minutes e balance_seconds baseado na ocorrência
-    // O calculateDailyRecords preserva a ocorrência e recalcula os valores corretamente
+    // Recalcular o registro para ajustar expected_minutes, balance_seconds e valores CLT baseado na ocorrência
+    // O calculateDailyRecords preserva a ocorrência e recalcula TODOS os valores, incluindo CLT
+    // IMPORTANTE: Mesmo quando há ocorrência, os valores CLT devem ser calculados baseado nas batidas reais vs escala
     try {
+      logger.info(`[Update Occurrence] Recalculando registros da data ${recordDate} após atualizar ocorrência`);
       await calculateDailyRecords(recordDate);
       
       // Buscar o registro atualizado após recálculo
@@ -124,7 +126,8 @@ export async function PATCH(request: NextRequest) {
         `SELECT id, occurrence_type, occurrence_hours_minutes, occurrence_duration, 
                 occurrence_morning_entry, occurrence_lunch_exit, 
                 occurrence_afternoon_entry, occurrence_final_exit,
-                expected_minutes, balance_seconds, worked_minutes
+                expected_minutes, balance_seconds, worked_minutes,
+                atraso_clt_minutes, extra_clt_minutes, saida_antec_clt_minutes, saldo_clt_minutes
          FROM processed_records 
          WHERE id = $1`,
         [id]
@@ -145,11 +148,16 @@ export async function PATCH(request: NextRequest) {
             expected_minutes: updatedRecord[0].expected_minutes,
             balance_seconds: updatedRecord[0].balance_seconds,
             worked_minutes: updatedRecord[0].worked_minutes,
+            atraso_clt_minutes: updatedRecord[0].atraso_clt_minutes,
+            extra_clt_minutes: updatedRecord[0].extra_clt_minutes,
+            saida_antec_clt_minutes: updatedRecord[0].saida_antec_clt_minutes,
+            saldo_clt_minutes: updatedRecord[0].saldo_clt_minutes,
           },
         });
       }
     } catch (error: any) {
-      // Erro ao recalcular - continuar mesmo assim
+      // Erro ao recalcular - logar mas não falhar a requisição
+      logger.error('[Update Occurrence] Erro ao recalcular após atualizar ocorrência:', error);
       // Retornar o resultado da atualização mesmo se o recálculo falhar
     }
 
