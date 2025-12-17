@@ -133,7 +133,11 @@ export async function POST(request: NextRequest) {
       logger.info(`Restaurando ${savedOccurrences.size} ocorrência(s)...`);
       
       for (const [key, occ] of savedOccurrences.entries()) {
-        const [employeeId, date] = key.split('-');
+        const parts = key.split('-');
+        // Key format: "employeeId-date" (ex: "2-2025-12-05")
+        // Pegar primeiro elemento como employeeId, resto como data
+        const employeeId = parts[0];
+        const date = parts.length >= 4 ? parts.slice(1).join('-') : parts[1]; // Junta todos os partes da data (yyyy-MM-dd)
         try {
           // Verificar se o registro existe antes de atualizar
           const existingRecord = await query(
@@ -177,8 +181,20 @@ export async function POST(request: NextRequest) {
       // Recalcular apenas as datas que tiveram ocorrências restauradas para ajustar saldos
       const datesToRecalculate = new Set<string>();
       for (const [key] of savedOccurrences.entries()) {
-        const [, date] = key.split('-');
-        datesToRecalculate.add(date);
+        const parts = key.split('-');
+        // Key format: "employeeId-date" (ex: "2-2025-12-05")
+        // Pegar tudo após o primeiro '-' como data
+        if (parts.length >= 4) {
+          const date = parts.slice(1).join('-'); // Junta todos os partes da data (yyyy-MM-dd)
+          // Validar formato de data (yyyy-MM-dd)
+          if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            datesToRecalculate.add(date);
+          } else {
+            logger.warn(`Formato de data inválido extraído da key "${key}": ${date}`);
+          }
+        } else {
+          logger.warn(`Formato de key inválido: "${key}" (esperado: "employeeId-yyyy-MM-dd")`);
+        }
       }
       
       for (const date of datesToRecalculate) {

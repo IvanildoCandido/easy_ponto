@@ -27,3 +27,4 @@ END $$;
 -- Comentário para documentação
 COMMENT ON COLUMN employees.compensation_type IS 'Tipo de compensação: BANCO_DE_HORAS (faz netting de saldo líquido) ou PAGAMENTO_FOLHA (separa extras para pagamento e faltas para desconto). Padrão: BANCO_DE_HORAS.';
 
+

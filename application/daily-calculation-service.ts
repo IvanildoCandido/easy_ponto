@@ -40,6 +40,13 @@ export async function calculateDailyRecords(date: string) {
   }
   
   const workDate = parse(date, 'yyyy-MM-dd', new Date());
+  
+  // Validar se a data é válida
+  if (isNaN(workDate.getTime())) {
+    logger.error(`Data inválida recebida: ${date}`);
+    throw new Error(`Data inválida: ${date}`);
+  }
+  
   // Converter getDay() (0=Domingo, 1=Segunda, ..., 6=Sábado) para day_of_week do banco (1=Segunda, ..., 6=Sábado)
   // Se for domingo (0), não deve buscar schedule (não tem domingo no banco)
   const jsDayOfWeek = workDate.getDay();
@@ -146,6 +153,8 @@ export async function calculateDailyRecords(date: string) {
     
     if (!schedule) {
       logger.warn(`Funcionário ${empId} - ${date}: Nenhum schedule encontrado para este dia`);
+      // Pular processamento se não houver schedule (não é possível calcular sem horário previsto)
+      continue;
     }
     
     // Processar registros únicos em ordem cronológica para identificar os 4 pontos

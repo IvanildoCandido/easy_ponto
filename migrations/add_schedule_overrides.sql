@@ -28,3 +28,4 @@ COMMENT ON COLUMN schedule_overrides.shift_type IS 'Tipo de turno para esta data
 COMMENT ON COLUMN schedule_overrides.morning_start IS 'Horário de entrada manhã para esta data. Se NULL, usa o horário padrão do schedule geral';
 COMMENT ON COLUMN schedule_overrides.break_minutes IS 'Minutos do intervalo obrigatório para esta data. Se NULL, usa o valor padrão do schedule geral';
 
+

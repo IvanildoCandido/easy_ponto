@@ -42,3 +42,4 @@ COMMENT ON COLUMN processed_records.is_manual_afternoon_entry IS
 COMMENT ON COLUMN processed_records.is_manual_final_exit IS 
   'Indica se a batida de saída final foi corrigida manualmente';
 
+

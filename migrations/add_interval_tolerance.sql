@@ -22,3 +22,4 @@ END $$;
 -- Comentário para documentação
 COMMENT ON COLUMN work_schedules.interval_tolerance_minutes IS 'Tolerância de intervalo em minutos (ex: 20 para permitir até 20min a mais no intervalo sem considerar excesso). NULL = sem tolerância (comportamento padrão).';
 
+
