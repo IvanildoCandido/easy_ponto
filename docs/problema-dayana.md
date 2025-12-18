@@ -29,3 +29,4 @@ A escala de sábado da Dayana no banco está configurada para terminar às **15:
 2. O sistema está buscando a escala correta do banco
 3. Há algum problema na detecção/uso da escala de sábado
 
+

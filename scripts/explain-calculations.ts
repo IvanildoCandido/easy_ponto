@@ -280,3 +280,4 @@ console.log('\n' + '='.repeat(80));
 console.log('✅ Análise concluída!');
 console.log('='.repeat(80));
 
+

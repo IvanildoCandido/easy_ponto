@@ -113,3 +113,4 @@
 
 3. **Excesso de Intervalo**: Quando há excesso de intervalo e não há hora extra suficiente para descontar, o excesso vira atraso conforme a lógica implementada.
 
+

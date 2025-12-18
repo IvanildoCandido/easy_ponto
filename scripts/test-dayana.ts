@@ -72,3 +72,4 @@ console.log(`  Excesso de Intervalo: ${dayana6Summary.intervalExcessMinutes}min`
 console.log('\nLogs:');
 dayana6Summary.logs.forEach(log => console.log(`  ${log}`));
 
+

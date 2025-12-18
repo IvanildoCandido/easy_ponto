@@ -148,6 +148,20 @@ if (!useSupabase) {
 
     CREATE INDEX IF NOT EXISTS idx_time_records_employee_date ON time_records(employee_id, datetime);
     CREATE INDEX IF NOT EXISTS idx_processed_records_employee_date ON processed_records(employee_id, date);
+
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      event_type TEXT NOT NULL CHECK(event_type IN ('FERIADO', 'DSR')) DEFAULT 'FERIADO',
+      description TEXT,
+      applies_to_all_employees INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(date, event_type)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_date ON calendar_events(date);
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_type ON calendar_events(event_type);
   `);
   
   // Adicionar campos novos em work_schedules se não existirem (SQLite)

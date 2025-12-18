@@ -80,12 +80,15 @@ export async function GET(request: NextRequest) {
             e.name as employee_name,
           e.department,
           ws.shift_type,
-          ws.break_minutes
+          ws.break_minutes,
+          ce.event_type as calendar_event_type,
+          ce.description as calendar_event_description
           FROM processed_records pr
           JOIN employees e ON pr.employee_id = e.id
         LEFT JOIN work_schedules ws ON ws.employee_id = e.id 
           AND ws.day_of_week = EXTRACT(DOW FROM pr.date)
           AND EXTRACT(DOW FROM pr.date) BETWEEN 1 AND 6
+        LEFT JOIN calendar_events ce ON ce.date = pr.date
           WHERE pr.employee_id = $1 
           AND pr.date >= $2
           AND pr.date <= $3
@@ -93,6 +96,92 @@ export async function GET(request: NextRequest) {
         `,
         [parseInt(employeeId), startDate, endDate]
       )) as any[];
+    
+    // Buscar eventos do calendário que não têm registros processados e adicionar
+    const useSupabase = !!process.env.SUPABASE_DB_URL;
+    let calendarEventsSql: string;
+    if (useSupabase) {
+      calendarEventsSql = `
+        SELECT 
+          ce.date,
+          ce.event_type as calendar_event_type,
+          ce.description as calendar_event_description
+        FROM calendar_events ce
+        WHERE ce.date >= $1::date AND ce.date <= $2::date
+          AND ce.applies_to_all_employees = true
+          AND NOT EXISTS (
+            SELECT 1 FROM processed_records pr 
+            WHERE pr.employee_id = $3 AND pr.date = ce.date
+          )
+      `;
+    } else {
+      calendarEventsSql = `
+        SELECT 
+          ce.date,
+          ce.event_type as calendar_event_type,
+          ce.description as calendar_event_description
+        FROM calendar_events ce
+        WHERE date(ce.date) >= $1 AND date(ce.date) <= $2
+          AND ce.applies_to_all_employees = 1
+          AND NOT EXISTS (
+            SELECT 1 FROM processed_records pr 
+            WHERE pr.employee_id = $3 AND date(pr.date) = date(ce.date)
+          )
+      `;
+    }
+    
+    const calendarOnlyReports = (await query(calendarEventsSql, [startDate, endDate, parseInt(employeeId)])) as any[];
+    
+    // Adicionar eventos do calendário como registros "fantasma" para o PDF
+    for (const eventReport of calendarOnlyReports) {
+      let dateStr: string;
+      if (eventReport.date instanceof Date) {
+        dateStr = format(eventReport.date, 'yyyy-MM-dd');
+      } else if (typeof eventReport.date === 'string') {
+        dateStr = eventReport.date.split('T')[0];
+      } else {
+        dateStr = String(eventReport.date || '');
+      }
+      
+      reports.push({
+        id: null,
+        employee_id: parseInt(employeeId),
+        date: dateStr,
+        first_entry: null,
+        last_exit: null,
+        morning_entry: null,
+        lunch_exit: null,
+        afternoon_entry: null,
+        final_exit: null,
+        expected_start: null,
+        expected_end: null,
+        delay_seconds: 0,
+        early_arrival_seconds: 0,
+        overtime_seconds: 0,
+        early_exit_seconds: 0,
+        worked_minutes: 0,
+        expected_minutes: 0,
+        balance_seconds: 0,
+        interval_excess_seconds: 0,
+        atraso_clt_minutes: 0,
+        chegada_antec_clt_minutes: 0,
+        extra_clt_minutes: 0,
+        saida_antec_clt_minutes: 0,
+        saldo_clt_minutes: 0,
+        status: 'OK',
+        occurrence_type: null,
+        occurrence_morning_entry: false,
+        occurrence_lunch_exit: false,
+        occurrence_afternoon_entry: false,
+        occurrence_final_exit: false,
+        employee_name: reports[0]?.employee_name || '',
+        department: reports[0]?.department || '',
+        shift_type: null,
+        break_minutes: null,
+        calendar_event_type: eventReport.calendar_event_type,
+        calendar_event_description: eventReport.calendar_event_description,
+      });
+    }
     
     // Filtrar os resultados para garantir que são do mês correto
     const monthPrefix = month;
@@ -240,6 +329,8 @@ export async function GET(request: NextRequest) {
           dayOfWeek: format(day, 'EEE', { locale: ptBR }),
           isSunday,
           status: report?.status || 'OK',
+          calendarEventType: report?.calendar_event_type || null,
+          calendarEventDescription: report?.calendar_event_description || null,
           occurrenceType: report?.occurrence_type || null,
           occurrenceMorningEntry: report?.occurrence_morning_entry === true || report?.occurrence_morning_entry === 1 || false,
           occurrenceLunchExit: report?.occurrence_lunch_exit === true || report?.occurrence_lunch_exit === 1 || false,

@@ -38,3 +38,4 @@ O sistema está funcionando corretamente!
 
 No caso de Maria Raquel, o excesso de 7min foi totalmente descontado das 40min de hora extra, resultando em 33min de hora extra e 0min de atraso. Isso está correto!
 
+

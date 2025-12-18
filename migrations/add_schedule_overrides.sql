@@ -29,3 +29,4 @@ COMMENT ON COLUMN schedule_overrides.morning_start IS 'Horário de entrada manh�
 COMMENT ON COLUMN schedule_overrides.break_minutes IS 'Minutos do intervalo obrigatório para esta data. Se NULL, usa o valor padrão do schedule geral';
 
 
+

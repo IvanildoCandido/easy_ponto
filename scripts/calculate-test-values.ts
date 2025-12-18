@@ -47,3 +47,4 @@ console.log('   Extra bruto (após tolerância): 18:16 - 18:00 = 16min, excedent
 console.log('   Após desconto: 11 - 2 = 9min');
 console.log('   Resultado: EXTRA_CLT = 9, SALDO = 9\n');
 
+

@@ -98,3 +98,4 @@
 - Saldo CLT: -20min (3min atraso + 17min saída antecipada)
 - A lógica está funcionando corretamente: quando não há hora extra nem chegada antecipada para descontar o excesso de intervalo, ele vira atraso.
 
+

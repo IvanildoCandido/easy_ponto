@@ -11,6 +11,14 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     
+    // employeeId é obrigatório
+    if (!employeeId) {
+      return NextResponse.json(
+        { error: 'employeeId é obrigatório' },
+        { status: 400 }
+      );
+    }
+    
     // Detectar se está usando Supabase (Postgres) ou SQLite
     const useSupabase = !!process.env.SUPABASE_DB_URL;
     
@@ -31,12 +39,15 @@ export async function GET(request: NextRequest) {
           e.name as employee_name,
           e.department,
           ws.shift_type,
-          ws.break_minutes
+          ws.break_minutes,
+          ce.event_type as calendar_event_type,
+          ce.description as calendar_event_description
         FROM processed_records pr
         JOIN employees e ON pr.employee_id = e.id
         LEFT JOIN work_schedules ws ON ws.employee_id = e.id 
           AND ws.day_of_week = EXTRACT(DOW FROM pr.date)
           AND EXTRACT(DOW FROM pr.date) BETWEEN 1 AND 6
+        LEFT JOIN calendar_events ce ON ce.date = pr.date
         WHERE 1=1
       `;
     } else {
@@ -50,22 +61,24 @@ export async function GET(request: NextRequest) {
         e.name as employee_name,
           e.department,
           ws.shift_type,
-          ws.break_minutes
+          ws.break_minutes,
+          ce.event_type as calendar_event_type,
+          ce.description as calendar_event_description
       FROM processed_records pr
       JOIN employees e ON pr.employee_id = e.id
         LEFT JOIN work_schedules ws ON ws.employee_id = e.id 
           AND ws.day_of_week = CAST(strftime('%w', pr.date) AS INTEGER)
           AND CAST(strftime('%w', pr.date) AS INTEGER) BETWEEN 1 AND 6
+        LEFT JOIN calendar_events ce ON ce.date = pr.date
       WHERE 1=1
     `;
     }
     
     const params: any[] = [];
     
-    if (employeeId) {
-      sql += ' AND pr.employee_id = $' + (params.length + 1);
-      params.push(parseInt(employeeId));
-    }
+    // Filtrar por funcionário (obrigatório)
+    sql += ' AND pr.employee_id = $' + (params.length + 1);
+    params.push(parseInt(employeeId));
     
     if (startDate) {
       // Para Postgres: DATE type pode ser comparado diretamente com string
@@ -89,9 +102,133 @@ export async function GET(request: NextRequest) {
       params.push(endDate);
     }
     
-    sql += ' ORDER BY pr.date DESC, e.name';
+    sql += ' ORDER BY pr.date ASC, e.name';
     
     const reports = (await query(sql, params)) as any[];
+    
+    // Buscar eventos do calendário que não têm registros processados e adicionar como linhas "fantasma"
+    if (startDate && endDate) {
+      let calendarEventsSql: string;
+      if (useSupabase) {
+        calendarEventsSql = `
+          SELECT 
+            ce.date,
+            ce.event_type as calendar_event_type,
+            ce.description as calendar_event_description,
+            e.id as employee_id,
+            e.en_no,
+            e.name as employee_name,
+            e.department
+          FROM calendar_events ce
+          CROSS JOIN employees e
+          WHERE ce.date >= $1::date AND ce.date <= $2::date
+            AND ce.applies_to_all_employees = true
+            AND NOT EXISTS (
+              SELECT 1 FROM processed_records pr 
+              WHERE pr.employee_id = e.id AND pr.date = ce.date
+            )
+        `;
+      } else {
+        calendarEventsSql = `
+          SELECT 
+            ce.date,
+            ce.event_type as calendar_event_type,
+            ce.description as calendar_event_description,
+            e.id as employee_id,
+            e.en_no,
+            e.name as employee_name,
+            e.department
+          FROM calendar_events ce
+          CROSS JOIN employees e
+          WHERE date(ce.date) >= $1 AND date(ce.date) <= $2
+            AND ce.applies_to_all_employees = 1
+            AND NOT EXISTS (
+              SELECT 1 FROM processed_records pr 
+              WHERE pr.employee_id = e.id AND date(pr.date) = date(ce.date)
+            )
+        `;
+      }
+      
+      const calendarParams: any[] = [startDate, endDate];
+      
+      // Filtrar por funcionário (obrigatório)
+      calendarEventsSql += ` AND e.id = $${calendarParams.length + 1}`;
+      calendarParams.push(parseInt(employeeId));
+      
+      calendarEventsSql += ' ORDER BY ce.date ASC, e.name';
+      
+      const calendarOnlyReports = (await query(calendarEventsSql, calendarParams)) as any[];
+      
+      // Adicionar eventos do calendário como registros "fantasma"
+      for (const eventReport of calendarOnlyReports) {
+        // Normalizar data
+        let dateStr: string;
+        if (eventReport.date instanceof Date) {
+          dateStr = eventReport.date.toISOString().split('T')[0];
+        } else if (typeof eventReport.date === 'string') {
+          dateStr = eventReport.date.split('T')[0];
+        } else {
+          dateStr = String(eventReport.date || '');
+        }
+        
+        reports.push({
+          id: null, // Não tem ID porque não é um registro processado
+          employee_id: eventReport.employee_id,
+          date: dateStr,
+          en_no: eventReport.en_no,
+          employee_name: eventReport.employee_name,
+          department: eventReport.department,
+          // Campos vazios/nulos para registros sem batidas
+          first_entry: null,
+          last_exit: null,
+          morning_entry: null,
+          lunch_exit: null,
+          afternoon_entry: null,
+          final_exit: null,
+          expected_start: null,
+          expected_end: null,
+          delay_seconds: 0,
+          early_arrival_seconds: 0,
+          overtime_seconds: 0,
+          early_exit_seconds: 0,
+          worked_minutes: 0,
+          expected_minutes: 0,
+          balance_seconds: 0,
+          interval_excess_seconds: 0,
+          atraso_clt_minutes: 0,
+          chegada_antec_clt_minutes: 0,
+          extra_clt_minutes: 0,
+          saida_antec_clt_minutes: 0,
+          saldo_clt_minutes: 0,
+          status: 'OK',
+          occurrence_type: null,
+          occurrence_hours_minutes: null,
+          occurrence_duration: null,
+          occurrence_morning_entry: false,
+          occurrence_lunch_exit: false,
+          occurrence_afternoon_entry: false,
+          occurrence_final_exit: false,
+          is_manual_morning_entry: false,
+          is_manual_lunch_exit: false,
+          is_manual_afternoon_entry: false,
+          is_manual_final_exit: false,
+          shift_type: null,
+          break_minutes: null,
+          calendar_event_type: eventReport.calendar_event_type,
+          calendar_event_description: eventReport.calendar_event_description,
+        });
+      }
+      
+      // Reordenar após adicionar eventos do calendário (ordem crescente)
+      reports.sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        if (dateA !== dateB) {
+          return dateA - dateB; // ASC por data
+        }
+        return (a.employee_name || '').localeCompare(b.employee_name || '');
+      });
+    }
     
     // Formatar horas trabalhadas e converter segundos para minutos
     const formattedReports = reports.map(report => {
@@ -164,6 +301,8 @@ export async function GET(request: NextRequest) {
         is_manual_final_exit: report.is_manual_final_exit || false, // Batida de saída final corrigida manualmente
         shift_type: report.shift_type || 'FULL_DAY', // Tipo de turno
         break_minutes: report.break_minutes || null, // Minutos do intervalo
+        calendar_event_type: report.calendar_event_type || null, // Tipo de evento do calendário (FERIADO ou DSR)
+        calendar_event_description: report.calendar_event_description || null, // Descrição do evento do calendário
       };
     });
     

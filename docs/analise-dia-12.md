@@ -63,3 +63,4 @@ De acordo com a CLT e jurisprudência:
 
 O sistema **NÃO está descontando o excesso de intervalo das horas extras CLT**, o que é um erro. O excesso de intervalo deve ser descontado das horas extras trabalhadas.
 
+

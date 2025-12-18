@@ -87,3 +87,4 @@ Esta correção afeta:
 
 Conforme jurisprudência trabalhista, o tempo excedente do intervalo de almoço/descanso deve ser considerado como tempo não trabalhado, e portanto deve ser descontado do tempo trabalhado a mais (horas extras).
 
+

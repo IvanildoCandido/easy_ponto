@@ -5,11 +5,12 @@ import Image from 'next/image';
 import FileUpload from '@/components/FileUpload';
 import ScheduleConfig from '@/components/ScheduleConfig';
 import ScheduleOverrides from '@/components/ScheduleOverrides';
+import CalendarEvents from '@/components/CalendarEvents';
 import ReportsView from '@/components/ReportsView';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'upload' | 'schedules' | 'schedule-overrides' | 'reports'>('upload');
-  const [scheduleSubTab, setScheduleSubTab] = useState<'config' | 'overrides'>('config');
+  const [scheduleSubTab, setScheduleSubTab] = useState<'config' | 'overrides' | 'calendar'>('config');
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-primary-50/30 to-accent-50/20">
@@ -124,10 +125,21 @@ export default function Home() {
                 >
                   Horários Excepcionais
                 </button>
+                <button
+                  onClick={() => setScheduleSubTab('calendar')}
+                  className={`px-4 py-2 font-semibold text-sm transition-colors ${
+                    scheduleSubTab === 'calendar'
+                      ? 'text-primary-600 border-b-2 border-primary-600'
+                      : 'text-neutral-600 hover:text-primary-600'
+                  }`}
+                >
+                  Feriados e DSR
+                </button>
               </div>
               
               {scheduleSubTab === 'config' && <ScheduleConfig />}
               {scheduleSubTab === 'overrides' && <ScheduleOverrides />}
+              {scheduleSubTab === 'calendar' && <CalendarEvents />}
             </div>
           )}
           {activeTab === 'schedule-overrides' && <ScheduleOverrides />}

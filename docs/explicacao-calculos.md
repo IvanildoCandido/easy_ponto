@@ -188,3 +188,4 @@ Para verificar se há algum problema, precisamos:
 2. Confirmar se a **interpretação da regra CLT** está correta (excedente vs total)
 3. Verificar se o **teto diário de 10 minutos** deve zerar valores individuais ou não
 
+

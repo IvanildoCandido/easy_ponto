@@ -45,3 +45,4 @@ if (summary.atrasoCltMinutes === 14 && summary.extraCltMinutes === 20 && summary
   summary.logs.forEach(log => console.log(`  ${log}`));
 }
 
+

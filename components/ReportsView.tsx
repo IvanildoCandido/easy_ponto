@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { startOfMonth, endOfMonth, format } from 'date-fns';
 
 interface Employee {
   id: number;
@@ -48,6 +49,8 @@ interface Report {
   occurrence_final_exit?: boolean;
   shift_type?: 'FULL_DAY' | 'MORNING_ONLY' | 'AFTERNOON_ONLY' | null;
   break_minutes?: number | null;
+  calendar_event_type?: 'FERIADO' | 'DSR' | null;
+  calendar_event_description?: string | null;
   // Indicadores de correção manual
   is_manual_morning_entry?: boolean;
   is_manual_lunch_exit?: boolean;
@@ -56,10 +59,15 @@ interface Report {
 }
 
 export default function ReportsView() {
+  // Calcular primeiro e último dia do mês atual
+  const today = new Date();
+  const firstDayOfMonth = format(startOfMonth(today), 'yyyy-MM-dd');
+  const lastDayOfMonth = format(endOfMonth(today), 'yyyy-MM-dd');
+  
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<number | ''>('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(firstDayOfMonth);
+  const [endDate, setEndDate] = useState(lastDayOfMonth);
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingReport, setEditingReport] = useState<number | null>(null); // ID do registro sendo editado
@@ -96,14 +104,15 @@ export default function ReportsView() {
   };
 
   const loadReports = useCallback(async () => {
-    if (!startDate || !endDate) return;
+    // Só carregar dados se um funcionário estiver selecionado
+    if (!selectedEmployee || !startDate || !endDate) {
+      setReports([]);
+      return;
+    }
     
     setLoading(true);
     try {
-      let url = `/api/reports?startDate=${startDate}&endDate=${endDate}`;
-      if (selectedEmployee) {
-        url += `&employeeId=${selectedEmployee}`;
-      }
+      const url = `/api/reports?startDate=${startDate}&endDate=${endDate}&employeeId=${selectedEmployee}`;
       const response = await fetch(url);
       const data = await response.json();
       setReports(data);
@@ -116,12 +125,8 @@ export default function ReportsView() {
 
   useEffect(() => {
     loadEmployees();
-    // Definir datas padrão (últimos 30 dias)
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - 30);
-    setEndDate(end.toISOString().split('T')[0]);
-    setStartDate(start.toISOString().split('T')[0]);
+    // Datas padrão já são definidas no useState como primeiro e último dia do mês atual
+    // Não precisa definir novamente aqui
   }, []);
 
   useEffect(() => {
@@ -361,10 +366,22 @@ export default function ReportsView() {
         ESQUECIMENTO_BATIDA: 'E. Batida',
       };
       
-      // Verificar se tem ocorrência
-      const hasOccurrence = day.occurrenceType ? true : false;
+      // Verificar se tem evento do calendário (prioridade sobre ocorrência)
+      const hasCalendarEvent = day.calendarEventType ? true : false;
+      const calendarEventType = day.calendarEventType ? String(day.calendarEventType).trim().toUpperCase() : '';
+      const calendarEventLabel = calendarEventType === 'FERIADO' ? 'Feriado' : calendarEventType === 'DSR' ? 'DSR' : '';
+      
+      // Verificar se tem ocorrência (só se não tiver evento do calendário)
+      const hasOccurrence = !hasCalendarEvent && day.occurrenceType ? true : false;
       const occType = day.occurrenceType ? String(day.occurrenceType).trim().toUpperCase() : '';
       const occLabel = occType && occurrenceLabels[occType] ? occurrenceLabels[occType] : '';
+      
+      // Priorizar evento do calendário sobre ocorrência
+      const displayType = hasCalendarEvent ? calendarEventType : occType;
+      // Para DSR, mostrar apenas "DSR" (sem descrição completa para não ficar muito grande)
+      const displayLabel = hasCalendarEvent 
+        ? (calendarEventType === 'DSR' ? 'DSR' : calendarEventLabel)
+        : occLabel;
       
       // Verificar quais batidas têm ocorrência (pode vir como boolean ou número do banco)
       const hasOccMorning = day.occurrenceMorningEntry === true || day.occurrenceMorningEntry === 1;
@@ -391,15 +408,30 @@ export default function ReportsView() {
       pdf.text(finalDayText, xPos + 0.5, textY);
       xPos += colWidths[1];
       
-      // Coluna 2: Ocorrência - mostrar "SIM" se houver ocorrência
+      // Coluna 2: Ocorrência - mostrar evento do calendário ou ocorrência
       pdf.setTextColor(0, 0, 0);
-      const occurrenceText = hasOccurrence ? 'SIM' : '-';
+      let occurrenceText = '-';
+      if (hasCalendarEvent) {
+        occurrenceText = displayLabel || displayType;
+        // Diferentes cores para feriado e DSR
+        if (calendarEventType === 'FERIADO') {
+          pdf.setTextColor(147, 51, 234); // Roxo para feriado
+        } else if (calendarEventType === 'DSR') {
+          pdf.setTextColor(59, 130, 246); // Azul para DSR
+        }
+      } else if (hasOccurrence) {
+        occurrenceText = 'SIM';
+      }
       pdf.text(occurrenceText, xPos + 0.5, textY);
       xPos += colWidths[2];
       pdf.setTextColor(0, 0, 0);
       
-      // Coluna 3: Entrada - mostrar ocorrência se marcada, senão horário
-      if (hasOccMorning && occLabel) {
+      // Coluna 3: Entrada - mostrar evento do calendário, ocorrência se marcada, senão horário
+      if (hasCalendarEvent) {
+        // Mostrar evento do calendário em todas as batidas
+        pdf.setTextColor(52, 73, 94);
+        pdf.text(displayLabel || displayType, xPos + 0.5, textY);
+      } else if (hasOccMorning && occLabel) {
         pdf.setTextColor(52, 73, 94); // Cinza escuro para ocorrência
         pdf.text(occLabel, xPos + 0.5, textY);
           } else {
@@ -410,8 +442,11 @@ export default function ReportsView() {
       xPos += colWidths[3];
       pdf.setTextColor(0, 0, 0);
       
-      // Coluna 4: Almoço - mostrar ocorrência se marcada, senão horário
-      if (hasOccLunch && occLabel) {
+      // Coluna 4: Almoço - mostrar evento do calendário, ocorrência se marcada, senão horário
+      if (hasCalendarEvent) {
+        pdf.setTextColor(52, 73, 94);
+        pdf.text(displayLabel || displayType, xPos + 0.5, textY);
+      } else if (hasOccLunch && occLabel) {
         pdf.setTextColor(52, 73, 94);
         pdf.text(occLabel, xPos + 0.5, textY);
         } else {
@@ -422,8 +457,11 @@ export default function ReportsView() {
       xPos += colWidths[4];
       pdf.setTextColor(0, 0, 0);
       
-      // Coluna 5: Retorno - mostrar ocorrência se marcada, senão horário
-      if (hasOccAfternoon && occLabel) {
+      // Coluna 5: Retorno - mostrar evento do calendário, ocorrência se marcada, senão horário
+      if (hasCalendarEvent) {
+        pdf.setTextColor(52, 73, 94);
+        pdf.text(displayLabel || displayType, xPos + 0.5, textY);
+      } else if (hasOccAfternoon && occLabel) {
         pdf.setTextColor(52, 73, 94);
         pdf.text(occLabel, xPos + 0.5, textY);
       } else {
@@ -434,8 +472,11 @@ export default function ReportsView() {
       xPos += colWidths[5];
       pdf.setTextColor(0, 0, 0);
       
-      // Coluna 6: Saída - mostrar ocorrência se marcada, senão horário
-      if (hasOccFinal && occLabel) {
+      // Coluna 6: Saída - mostrar evento do calendário, ocorrência se marcada, senão horário
+      if (hasCalendarEvent) {
+        pdf.setTextColor(52, 73, 94);
+        pdf.text(displayLabel || displayType, xPos + 0.5, textY);
+      } else if (hasOccFinal && occLabel) {
         pdf.setTextColor(52, 73, 94);
         pdf.text(occLabel, xPos + 0.5, textY);
       } else {
@@ -929,8 +970,9 @@ export default function ReportsView() {
             value={selectedEmployee}
             onChange={(e) => setSelectedEmployee(e.target.value ? parseInt(e.target.value) : '')}
             className="input"
+            required
           >
-            <option value="">Todos</option>
+            <option value="">-- Selecione um funcionário --</option>
             {employees.map(emp => (
               <option key={emp.id} value={emp.id}>
                 {emp.name}
@@ -989,7 +1031,14 @@ export default function ReportsView() {
         </div>
       </div>
 
-      {loading ? (
+      {!selectedEmployee ? (
+        <div className="text-center py-12 text-neutral-500">
+          <svg className="mx-auto h-12 w-12 text-neutral-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+          <p>Selecione um funcionário para visualizar os registros.</p>
+        </div>
+      ) : loading ? (
         <div className="text-center py-12 text-neutral-500 flex items-center justify-center space-x-2">
           <svg className="animate-spin h-5 w-5 text-primary-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -1082,7 +1131,17 @@ export default function ReportsView() {
                       )}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-xs">
-                      {report.occurrence_type ? (
+                      {report.calendar_event_type ? (
+                        <span className={`px-2 py-1 rounded text-[10px] font-medium border ${
+                          report.calendar_event_type === 'FERIADO' 
+                            ? 'bg-purple-100 text-purple-800 border-purple-300'
+                            : 'bg-blue-100 text-blue-800 border-blue-300'
+                        }`} title={report.calendar_event_description || undefined}>
+                          {report.calendar_event_type === 'FERIADO' 
+                            ? (report.calendar_event_description ? `Feriado: ${report.calendar_event_description}` : 'Feriado')
+                            : 'DSR'}
+                        </span>
+                      ) : report.occurrence_type ? (
                         <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
                           {getOccurrenceTypeLabel(report.occurrence_type)}
                         </span>

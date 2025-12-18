@@ -93,3 +93,4 @@ console.log(`  Status: ${raquelSummarySingleShift.status}`);
 console.log('\nLogs:');
 raquelSummarySingleShift.logs.forEach(log => console.log(`  ${log}`));
 
+

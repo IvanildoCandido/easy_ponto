@@ -87,3 +87,4 @@ const saidaPrevista2 = parse('2025-12-06 15:00:00', 'yyyy-MM-dd HH:mm:ss', new D
 const saida2 = differenceInMinutes(saida, saidaPrevista2);
 console.log(`  Saída: ${saida2}min depois (após tolerância: ${saida2 - 5}min de hora extra)`);
 
+

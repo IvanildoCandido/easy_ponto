@@ -83,3 +83,13 @@ export interface DailyReport {
   worked_hours: string;
 }
 
+export interface CalendarEvent {
+  id?: number;
+  date: string; // Data no formato 'yyyy-MM-dd'
+  event_type: 'FERIADO' | 'DSR';
+  description: string | null;
+  applies_to_all_employees?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
