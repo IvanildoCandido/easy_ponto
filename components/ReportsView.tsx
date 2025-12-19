@@ -1054,17 +1054,14 @@ export default function ReportsView() {
           <p>Nenhum registro encontrado para o período selecionado.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto -mx-3 sm:mx-0 rounded-xl border border-neutral-200">
-          <table className="w-full divide-y divide-neutral-200 table-auto text-xs sm:text-sm bg-white">
+        <div className="rounded-xl border border-neutral-200 overflow-hidden">
+          <table className="w-full divide-y divide-neutral-200 text-xs sm:text-sm bg-white">
             <thead className="bg-gradient-to-r from-primary-500 to-primary-600">
               <tr>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                   Data
                 </th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                  Ações
-                </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider min-w-[120px]">
                   Funcionário
                 </th>
                 {/* Headers dinâmicos: verificar se há turno único nos reports */}
@@ -1108,6 +1105,9 @@ export default function ReportsView() {
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                       SALDO_CLT
                     </th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                      Ações
+                    </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-neutral-200">
@@ -1127,88 +1127,9 @@ export default function ReportsView() {
                         <span className="ml-1 text-yellow-600">⚠️</span>
                       )}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs">
-                      <div className="flex items-center gap-1">
-                        {/* Ícone de ocorrência com tooltip */}
-                        {(report.calendar_event_type || report.occurrence_type) && (
-                          <div className="relative group">
-                            {report.calendar_event_type === 'FERIADO' ? (
-                              <span className="inline-block text-purple-600 cursor-help text-base">
-                                🎉
-                              </span>
-                            ) : report.calendar_event_type === 'DSR' ? (
-                              <span className="inline-block text-blue-600 cursor-help text-base">
-                                📅
-                              </span>
-                            ) : report.occurrence_type === 'ESQUECIMENTO_BATIDA' ? (
-                              <span className="inline-block text-yellow-600 cursor-help text-base">
-                                ⚠️
-                              </span>
-                            ) : report.occurrence_type === 'FALTA' ? (
-                              <span className="inline-block text-red-600 cursor-help text-base">
-                                ❌
-                              </span>
-                            ) : report.occurrence_type === 'FOLGA' ? (
-                              <span className="inline-block text-green-600 cursor-help text-base">
-                                🏖️
-                              </span>
-                            ) : report.occurrence_type === 'ATESTADO' ? (
-                              <span className="inline-block text-orange-600 cursor-help text-base">
-                                🏥
-                              </span>
-                            ) : report.occurrence_type === 'DECLARACAO' ? (
-                              <span className="inline-block text-indigo-600 cursor-help text-base">
-                                📝
-                              </span>
-                            ) : null}
-                            {/* Tooltip que aparece no hover */}
-                            <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none">
-                              <div className="bg-neutral-800 text-white text-xs rounded py-1.5 px-3 whitespace-nowrap shadow-xl">
-                                {report.calendar_event_type === 'FERIADO' 
-                                  ? (report.calendar_event_description ? `Feriado: ${report.calendar_event_description}` : 'Feriado')
-                                  : report.calendar_event_type === 'DSR' 
-                                    ? 'DSR - Descanso Semanal Remunerado'
-                                    : getOccurrenceTypeLabel(report.occurrence_type || '')}
-                                {/* Seta do tooltip apontando para baixo */}
-                                <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-neutral-800"></div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingReport(report.id);
-                            setEditingOccurrenceType(report.occurrence_type || '');
-                            setEditingOccurrenceMorningEntry(report.occurrence_morning_entry || false);
-                            setEditingOccurrenceLunchExit(report.occurrence_lunch_exit || false);
-                            setEditingOccurrenceAfternoonEntry(report.occurrence_afternoon_entry || false);
-                            setEditingOccurrenceFinalExit(report.occurrence_final_exit || false);
-                          }}
-                          className="text-primary-600 hover:text-primary-800 transition-colors p-1 rounded hover:bg-primary-50"
-                          title="Editar ocorrência"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openManualPunchModal(report);
-                          }}
-                          className="text-orange-600 hover:text-orange-800 transition-colors p-1 rounded hover:bg-orange-50"
-                          title="Corrigir batidas manualmente"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </button>
-                      </div>
-                    </td>
                     <td className="px-3 py-3 text-xs text-neutral-900">
-                      <div className="font-medium truncate">{report.employee_name}</div>
-                      <div className="text-[10px] text-neutral-500 truncate">{report.department}</div>
+                      <div className="font-medium">{report.employee_name}</div>
+                      <div className="text-[10px] text-neutral-500">{report.department}</div>
                     </td>
                     {/* Para turnos únicos, os campos são sempre na ordem: 1ª=Entrada, 2ª=Saída intervalo, 3ª=Entrada pós-intervalo, 4ª=Saída final */}
                         {isSingleShift ? (
@@ -1319,7 +1240,7 @@ export default function ReportsView() {
                             </td>
                           </>
                         )}
-                    <td className="px-3 py-3 whitespace-nowrap text-xs">
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
                       {report.atraso_clt_minutes && report.atraso_clt_minutes > 0 ? (
                         <span className="text-red-600 font-medium" title="Atraso CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
                           {formatMinutes(report.atraso_clt_minutes)}
@@ -1328,7 +1249,7 @@ export default function ReportsView() {
                         '-'
                       )}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs">
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
                       {report.extra_clt_minutes && report.extra_clt_minutes > 0 ? (
                         <span className="text-blue-600 font-medium" title="Hora extra CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
                           {formatMinutes(report.extra_clt_minutes)}
@@ -1337,7 +1258,7 @@ export default function ReportsView() {
                         '-'
                       )}
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs">
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
                       {(() => {
                         const saldoClt = report.saldo_clt_minutes || 0;
                         return (
@@ -1348,28 +1269,119 @@ export default function ReportsView() {
                         );
                       })()}
                     </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                      <div className="flex items-center gap-1">
+                        {/* Ícone de ocorrência com tooltip */}
+                        {(report.calendar_event_type || report.occurrence_type) && (
+                          <div className="relative group">
+                            {report.calendar_event_type === 'FERIADO' ? (
+                              <span className="inline-block text-purple-600 cursor-help text-base">
+                                🎉
+                              </span>
+                            ) : report.calendar_event_type === 'DSR' ? (
+                              <span className="inline-block text-blue-600 cursor-help text-base">
+                                📅
+                              </span>
+                            ) : report.occurrence_type === 'ESQUECIMENTO_BATIDA' ? (
+                              <span className="inline-block text-yellow-600 cursor-help text-base">
+                                ⚠️
+                              </span>
+                            ) : report.occurrence_type === 'FALTA' ? (
+                              <span className="inline-block text-red-600 cursor-help text-base">
+                                ❌
+                              </span>
+                            ) : report.occurrence_type === 'FOLGA' ? (
+                              <span className="inline-block text-green-600 cursor-help text-base">
+                                🏖️
+                              </span>
+                            ) : report.occurrence_type === 'ATESTADO' ? (
+                              <span className="inline-block text-orange-600 cursor-help text-base">
+                                🏥
+                              </span>
+                            ) : report.occurrence_type === 'DECLARACAO' ? (
+                              <span className="inline-block text-indigo-600 cursor-help text-base">
+                                📝
+                              </span>
+                            ) : null}
+                            {/* Tooltip que aparece no hover */}
+                            <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none">
+                              <div className="bg-neutral-800 text-white text-xs rounded py-1.5 px-3 whitespace-nowrap shadow-xl">
+                                {report.calendar_event_type === 'FERIADO' 
+                                  ? (report.calendar_event_description ? `Feriado: ${report.calendar_event_description}` : 'Feriado')
+                                  : report.calendar_event_type === 'DSR' 
+                                    ? 'DSR - Descanso Semanal Remunerado'
+                                    : getOccurrenceTypeLabel(report.occurrence_type || '')}
+                                {/* Seta do tooltip apontando para baixo */}
+                                <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-neutral-800"></div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingReport(report.id);
+                            setEditingOccurrenceType(report.occurrence_type || '');
+                            setEditingOccurrenceMorningEntry(report.occurrence_morning_entry || false);
+                            setEditingOccurrenceLunchExit(report.occurrence_lunch_exit || false);
+                            setEditingOccurrenceAfternoonEntry(report.occurrence_afternoon_entry || false);
+                            setEditingOccurrenceFinalExit(report.occurrence_final_exit || false);
+                          }}
+                          className="text-primary-600 hover:text-primary-800 transition-colors p-1 rounded hover:bg-primary-50"
+                          title="Editar ocorrência"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openManualPunchModal(report);
+                          }}
+                          className="text-orange-600 hover:text-orange-800 transition-colors p-1 rounded hover:bg-orange-50"
+                          title="Corrigir batidas manualmente"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot className="bg-gradient-to-r from-primary-50 to-primary-100 font-semibold">
               <tr>
-                <td colSpan={3} className="px-3 py-3 text-left text-xs text-neutral-700 font-semibold">
+                <td className="px-3 py-3 text-left text-xs text-neutral-700 font-semibold">
                   Totais:
                 </td>
                 <td className="px-3 py-3 text-xs text-neutral-700">
                   {/* Coluna Funcionário - vazia nos totais */}
                 </td>
-                <td colSpan={4} className="px-3 py-3 text-xs text-neutral-700">
-                  {/* E. Manhã, S. Alm., E. Tarde, S. Tarde - vazias nos totais */}
-                </td>
-                <td className="px-3 py-3 text-xs text-red-600">
+                {reports.length > 0 && (reports[0].shift_type === 'MORNING_ONLY' || reports[0].shift_type === 'AFTERNOON_ONLY') ? (
+                  <>
+                    <td className="px-3 py-3 text-xs text-neutral-700"></td>
+                    <td className="px-3 py-3 text-xs text-neutral-700"></td>
+                    <td className="px-3 py-3 text-xs text-neutral-700"></td>
+                    <td className="px-3 py-3 text-xs text-neutral-700"></td>
+                  </>
+                ) : (
+                  <>
+                    <td className="px-3 py-3 text-xs text-neutral-700"></td>
+                    <td className="px-3 py-3 text-xs text-neutral-700"></td>
+                    <td className="px-3 py-3 text-xs text-neutral-700"></td>
+                    <td className="px-3 py-3 text-xs text-neutral-700"></td>
+                  </>
+                )}
+                <td className="px-3 py-3 text-xs text-red-600 whitespace-nowrap">
                   {formatMinutes(reports.reduce((sum, r) => sum + (r.atraso_clt_minutes || 0), 0))}
                 </td>
-                <td className="px-3 py-3 text-xs text-blue-600">
+                <td className="px-3 py-3 text-xs text-blue-600 whitespace-nowrap">
                   {formatMinutes(reports.reduce((sum, r) => sum + (r.extra_clt_minutes || 0), 0))}
                 </td>
-                <td className="px-3 py-3 text-xs">
+                <td className="px-3 py-3 text-xs whitespace-nowrap">
                   {(() => {
                     const totalSaldoClt = reports.reduce((sum, r) => sum + (r.saldo_clt_minutes || 0), 0);
                     return (
@@ -1379,6 +1391,9 @@ export default function ReportsView() {
                       </span>
                     );
                   })()}
+                </td>
+                <td className="px-3 py-3 text-xs text-neutral-700">
+                  {/* Coluna Ações - vazia nos totais */}
                 </td>
               </tr>
             </tfoot>

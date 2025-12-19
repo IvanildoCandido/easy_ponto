@@ -57,19 +57,44 @@ export const supabase = new Proxy({} as SupabaseClient, {
 // Helper para verificar se o usuário está autenticado
 export async function getSession() {
   try {
-    const client = getSupabaseClient();
-    const { data: { session }, error } = await client.auth.getSession();
-    if (error) {
-      console.error('Erro ao obter sessão:', error);
-      return null;
-    }
-    return session;
-  } catch (error) {
     // Se não estiver no cliente, retornar null
     if (typeof window === 'undefined') {
       return null;
     }
-    throw error;
+    
+    const client = getSupabaseClient();
+    const { data: { session }, error } = await client.auth.getSession();
+    
+    if (error) {
+      console.error('Erro ao obter sessão:', error);
+      // Se houver erro, limpar o localStorage corrompido
+      try {
+        localStorage.removeItem('easy-ponto-auth');
+        localStorage.removeItem('easy-ponto-login-time');
+      } catch (e) {
+        // Ignorar erros ao limpar
+      }
+      return null;
+    }
+    
+    // Validar se a sessão tem um usuário válido
+    if (!session?.user) {
+      return null;
+    }
+    
+    return session;
+  } catch (error: any) {
+    console.error('Erro ao obter sessão:', error);
+    // Em caso de erro (token inválido, etc), limpar localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('easy-ponto-auth');
+        localStorage.removeItem('easy-ponto-login-time');
+      } catch (e) {
+        // Ignorar erros ao limpar
+      }
+    }
+    return null;
   }
 }
 

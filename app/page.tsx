@@ -47,9 +47,17 @@ export default function Home() {
                       <div className="text-[10px] text-neutral-500">{user.email}</div>
                     </div>
                     <button
-                      onClick={signOut}
-                      className="ml-2 px-3 py-1 text-xs bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg transition-colors"
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        try {
+                          await signOut();
+                        } catch (error) {
+                          console.error('Erro ao fazer logout:', error);
+                        }
+                      }}
+                      className="ml-2 px-3 py-1 text-xs bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg transition-colors cursor-pointer"
                       title="Sair"
+                      type="button"
                     >
                       Sair
                     </button>

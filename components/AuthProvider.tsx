@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { supabase, getSession, getCurrentUser } from '@/lib/supabase-client';
 import { User } from '@supabase/supabase-js';
@@ -23,61 +23,123 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
+  const handleSignOut = useCallback(async () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('easy-ponto-login-time');
+      try {
+        await supabase.auth.signOut();
+      } catch (error) {
+        console.error('Erro ao fazer logout:', error);
+      }
+    }
+    setUser(null);
+    router.push('/login');
+    router.refresh();
+  }, [router]);
+
   useEffect(() => {
+    // Timeout de segurança para evitar loading infinito
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        console.warn('Timeout na verificação de sessão, limpando e redirecionando para login');
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('easy-ponto-auth');
+          localStorage.removeItem('easy-ponto-login-time');
+        }
+        setUser(null);
+        setLoading(false);
+        if (pathname !== '/login') {
+          router.push('/login');
+        }
+      }
+    }, 5000); // 5 segundos de timeout
+
     // Verificar sessão inicial
     const checkSession = async () => {
       try {
         const session = await getSession();
-        if (session?.user) {
-          // Verificar se já passou 24 horas desde o login
-          const loginTimeStr = typeof window !== 'undefined' ? localStorage.getItem('easy-ponto-login-time') : null;
-          
-          if (loginTimeStr) {
-            const loginTime = parseInt(loginTimeStr, 10);
-            const now = Date.now();
-            const hoursSinceLogin = (now - loginTime) / (1000 * 60 * 60); // Converter para horas
-            
-            if (hoursSinceLogin >= 24) {
-              // Sessão expirada (24 horas), fazer logout
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('easy-ponto-login-time');
-              }
-              await supabase.auth.signOut();
-              setUser(null);
-              if (pathname !== '/login') {
-                router.push('/login');
-              }
-            } else {
-              setUser(session.user);
-            }
-          } else {
-            // Se não há timestamp de login, mas há sessão, criar um agora
-            // (pode ser um refresh token ou sessão existente)
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('easy-ponto-login-time', Date.now().toString());
-            }
-            setUser(session.user);
-          }
-        } else {
-          // Limpar timestamp se não há sessão
+        
+        // Se não há sessão válida, limpar tudo e ir para login
+        if (!session?.user) {
           if (typeof window !== 'undefined') {
+            // Limpar dados do localStorage se não há sessão válida
             localStorage.removeItem('easy-ponto-login-time');
+            // Tentar limpar também o token do Supabase se estiver corrompido
+            try {
+              await supabase.auth.signOut();
+            } catch (err) {
+              // Se falhar, apenas limpar o localStorage diretamente
+              localStorage.removeItem('easy-ponto-auth');
+            }
           }
           setUser(null);
           if (pathname !== '/login') {
             router.push('/login');
           }
+          return;
+        }
+
+        // Se há sessão válida, verificar se já passou 24 horas desde o login
+        const loginTimeStr = typeof window !== 'undefined' ? localStorage.getItem('easy-ponto-login-time') : null;
+        
+        if (loginTimeStr) {
+          const loginTime = parseInt(loginTimeStr, 10);
+          if (isNaN(loginTime)) {
+            // Timestamp inválido, criar um novo
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('easy-ponto-login-time', Date.now().toString());
+            }
+            setUser(session.user);
+            return;
+          }
+          
+          const now = Date.now();
+          const hoursSinceLogin = (now - loginTime) / (1000 * 60 * 60);
+          
+          if (hoursSinceLogin >= 24) {
+            // Sessão expirada (24 horas), fazer logout
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('easy-ponto-login-time');
+              try {
+                await supabase.auth.signOut();
+              } catch (err) {
+                localStorage.removeItem('easy-ponto-auth');
+              }
+            }
+            setUser(null);
+            if (pathname !== '/login') {
+              router.push('/login');
+            }
+            return;
+          }
+          
+          // Sessão válida e dentro das 24 horas
+          setUser(session.user);
+        } else {
+          // Se não há timestamp de login, mas há sessão válida, criar um agora
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('easy-ponto-login-time', Date.now().toString());
+          }
+          setUser(session.user);
         }
       } catch (error) {
         console.error('Erro ao verificar sessão:', error);
+        // Em caso de erro, limpar tudo e redirecionar para login
         if (typeof window !== 'undefined') {
           localStorage.removeItem('easy-ponto-login-time');
+          try {
+            await supabase.auth.signOut();
+          } catch (err) {
+            // Se falhar, limpar manualmente
+            localStorage.removeItem('easy-ponto-auth');
+          }
         }
         setUser(null);
         if (pathname !== '/login') {
           router.push('/login');
         }
       } finally {
+        // Garantir que o loading seja sempre desativado
         setLoading(false);
       }
     };
@@ -93,7 +155,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           data: { subscription: authSubscription },
         } = supabase.auth.onAuthStateChange(async (event, session) => {
           if (event === 'SIGNED_OUT' || !session) {
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('easy-ponto-login-time');
+            }
             setUser(null);
+            setLoading(false);
             if (pathname !== '/login') {
               router.push('/login');
             }
@@ -173,6 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, 5 * 60 * 1000) : null; // 5 minutos
 
     return () => {
+      clearTimeout(timeoutId);
       if (subscription) {
         subscription.unsubscribe();
       }
@@ -180,20 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearInterval(interval);
       }
     };
-  }, [router, pathname]);
-
-  const handleSignOut = async () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('easy-ponto-login-time');
-      try {
-        await supabase.auth.signOut();
-      } catch (error) {
-        console.error('Erro ao fazer logout:', error);
-      }
-    }
-    setUser(null);
-    router.push('/login');
-  };
+  }, [router, pathname, loading]);
 
   // Se estiver carregando e não estiver na página de login, mostrar loading
   if (loading && pathname !== '/login') {
