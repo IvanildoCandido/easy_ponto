@@ -1062,9 +1062,6 @@ export default function ReportsView() {
                   Data
                 </th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                  Ocorrência
-                </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                   Ações
                 </th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider min-w-[120px]">
@@ -1131,26 +1128,53 @@ export default function ReportsView() {
                       )}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-xs">
-                      {report.calendar_event_type ? (
-                        <span className={`px-2 py-1 rounded text-[10px] font-medium border ${
-                          report.calendar_event_type === 'FERIADO' 
-                            ? 'bg-purple-100 text-purple-800 border-purple-300'
-                            : 'bg-blue-100 text-blue-800 border-blue-300'
-                        }`} title={report.calendar_event_description || undefined}>
-                          {report.calendar_event_type === 'FERIADO' 
-                            ? (report.calendar_event_description ? `Feriado: ${report.calendar_event_description}` : 'Feriado')
-                            : 'DSR'}
-                        </span>
-                      ) : report.occurrence_type ? (
-                        <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                          {getOccurrenceTypeLabel(report.occurrence_type)}
-                        </span>
-                      ) : (
-                        <span className="text-neutral-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs">
                       <div className="flex items-center gap-1">
+                        {/* Ícone de ocorrência com tooltip */}
+                        {(report.calendar_event_type || report.occurrence_type) && (
+                          <div className="relative group">
+                            {report.calendar_event_type === 'FERIADO' ? (
+                              <span className="inline-block text-purple-600 cursor-help text-base">
+                                🎉
+                              </span>
+                            ) : report.calendar_event_type === 'DSR' ? (
+                              <span className="inline-block text-blue-600 cursor-help text-base">
+                                📅
+                              </span>
+                            ) : report.occurrence_type === 'ESQUECIMENTO_BATIDA' ? (
+                              <span className="inline-block text-yellow-600 cursor-help text-base">
+                                ⚠️
+                              </span>
+                            ) : report.occurrence_type === 'FALTA' ? (
+                              <span className="inline-block text-red-600 cursor-help text-base">
+                                ❌
+                              </span>
+                            ) : report.occurrence_type === 'FOLGA' ? (
+                              <span className="inline-block text-green-600 cursor-help text-base">
+                                🏖️
+                              </span>
+                            ) : report.occurrence_type === 'ATESTADO' ? (
+                              <span className="inline-block text-orange-600 cursor-help text-base">
+                                🏥
+                              </span>
+                            ) : report.occurrence_type === 'DECLARACAO' ? (
+                              <span className="inline-block text-indigo-600 cursor-help text-base">
+                                📝
+                              </span>
+                            ) : null}
+                            {/* Tooltip que aparece no hover */}
+                            <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none">
+                              <div className="bg-neutral-800 text-white text-xs rounded py-1.5 px-3 whitespace-nowrap shadow-xl">
+                                {report.calendar_event_type === 'FERIADO' 
+                                  ? (report.calendar_event_description ? `Feriado: ${report.calendar_event_description}` : 'Feriado')
+                                  : report.calendar_event_type === 'DSR' 
+                                    ? 'DSR - Descanso Semanal Remunerado'
+                                    : getOccurrenceTypeLabel(report.occurrence_type || '')}
+                                {/* Seta do tooltip apontando para baixo */}
+                                <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-neutral-800"></div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

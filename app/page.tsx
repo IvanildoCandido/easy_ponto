@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import { useAuth } from '@/components/AuthProvider';
 import FileUpload from '@/components/FileUpload';
 import ScheduleConfig from '@/components/ScheduleConfig';
 import ScheduleOverrides from '@/components/ScheduleOverrides';
@@ -9,7 +10,8 @@ import CalendarEvents from '@/components/CalendarEvents';
 import ReportsView from '@/components/ReportsView';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'upload' | 'schedules' | 'schedule-overrides' | 'reports'>('upload');
+  const { user, signOut } = useAuth();
+  const [activeTab, setActiveTab] = useState<'upload' | 'schedules' | 'schedule-overrides' | 'reports' | 'calendar-events'>('upload');
   const [scheduleSubTab, setScheduleSubTab] = useState<'config' | 'overrides' | 'calendar'>('config');
 
   return (
@@ -35,22 +37,25 @@ export default function Home() {
             </div>
             <div className="hidden md:flex items-center space-x-4">
               <span className="badge-success">Sistema Ativo</span>
-              <div className="text-xs text-neutral-500 border-l border-neutral-300 pl-4">
-                <a 
-                  href="https://www.linkedin.com/in/ivanildocandido/" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="group flex items-center space-x-2 hover:text-primary-600 transition-colors"
-                >
-                  <div>
-                    <div className="font-semibold text-primary-600 group-hover:underline">Ivanildo C. Bezerra</div>
-                    <div className="text-[10px]">Analista de Sistemas & Eng. Computação</div>
+              {user && (
+                <div className="text-xs text-neutral-500 border-l border-neutral-300 pl-4">
+                  <div className="flex items-center space-x-3">
+                    <div>
+                      <div className="font-semibold text-primary-600">
+                        {user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário'}
+                      </div>
+                      <div className="text-[10px] text-neutral-500">{user.email}</div>
+                    </div>
+                    <button
+                      onClick={signOut}
+                      className="ml-2 px-3 py-1 text-xs bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg transition-colors"
+                      title="Sair"
+                    >
+                      Sair
+                    </button>
                   </div>
-                  <svg className="w-4 h-4 text-primary-500" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                  </svg>
-                </a>
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
