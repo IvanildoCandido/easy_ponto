@@ -4,7 +4,7 @@
  */
 
 import { query, queryOne } from '../infrastructure/database';
-import { parse, format } from 'date-fns';
+import { parse, format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { WorkSchedule } from '../lib/types';
 import {
   computeDaySummaryV2,
@@ -497,6 +497,9 @@ export async function calculateDailyRecords(date: string) {
     
     // Salvar no banco
     // O novo modelo usa segundos diretamente, mas o banco ainda armazena alguns campos em segundos
+    // IMPORTANTE: ON CONFLICT DO UPDATE garante que se já existir uma entrada (vazia ou com dados),
+    // ela será atualizada com as batidas do arquivo processado. Isso permite que entradas vazias
+    // geradas anteriormente sejam substituídas quando houver batidas no arquivo.
     await query(
       `
         INSERT INTO processed_records 
@@ -582,5 +585,308 @@ export async function calculateDailyRecords(date: string) {
       ]
     );
   }
+}
+
+/**
+ * Cria uma entrada vazia para um dia específico se não existir registro no banco
+ * Usado para gerar todos os dias do mês mesmo sem batidas
+ * 
+ * @param employeeId - ID do funcionário
+ * @param date - Data no formato 'yyyy-MM-dd'
+ */
+async function createEmptyRecordIfNotExists(employeeId: number, date: string): Promise<boolean> {
+  // NOTA: Esta verificação pode ser redundante se chamada de generateMonthlyRecords
+  // que já verifica em batch, mas mantemos para segurança em outros contextos
+  // Verificar se já existe registro
+  const existing = await queryOne<{ id: number }>(
+    `SELECT id FROM processed_records WHERE employee_id = $1 AND date = $2`,
+    [employeeId, date]
+  );
+  
+  // Se já existe, não fazer nada (preservar dados existentes)
+  if (existing) {
+    return false;
+  }
+  
+  // Detectar Supabase
+  const useSupabase = !!process.env.SUPABASE_DB_URL;
+  
+  const workDate = parse(date, 'yyyy-MM-dd', new Date());
+  
+  // Validar se a data é válida
+  if (isNaN(workDate.getTime())) {
+    logger.error(`Data inválida recebida: ${date}`);
+    return false;
+  }
+  
+  // Converter getDay() (0=Domingo, 1=Segunda, ..., 6=Sábado) para day_of_week do banco (1=Segunda, ..., 6=Sábado)
+  const jsDayOfWeek = workDate.getDay();
+  const dayOfWeek = jsDayOfWeek === 0 ? null : jsDayOfWeek;
+  
+  // Buscar dados do funcionário
+  const employee = await queryOne<{ compensation_type?: 'BANCO_DE_HORAS' | 'PAGAMENTO_FOLHA' | null }>(
+    `SELECT compensation_type FROM employees WHERE id = $1`,
+    [employeeId]
+  );
+  const compensationType: 'BANCO_DE_HORAS' | 'PAGAMENTO_FOLHA' = 
+    (employee?.compensation_type as 'BANCO_DE_HORAS' | 'PAGAMENTO_FOLHA') || 'BANCO_DE_HORAS';
+  
+  // Buscar schedule (override primeiro, depois padrão)
+  let schedule: WorkSchedule | null = null;
+  
+  if (dayOfWeek) {
+    const override = await queryOne<WorkSchedule & { date?: string }>(
+      `
+        SELECT 
+          id,
+          employee_id,
+          morning_start,
+          morning_end,
+          afternoon_start,
+          afternoon_end,
+          shift_type,
+          break_minutes,
+          interval_tolerance_minutes
+        FROM schedule_overrides 
+        WHERE employee_id = $1 AND date = $2
+      `,
+      [employeeId, date]
+    );
+    
+    if (override) {
+      schedule = {
+        id: override.id,
+        employee_id: override.employee_id,
+        day_of_week: dayOfWeek,
+        morning_start: override.morning_start,
+        morning_end: override.morning_end,
+        afternoon_start: override.afternoon_start,
+        afternoon_end: override.afternoon_end,
+        shift_type: override.shift_type || null,
+        break_minutes: override.break_minutes || null,
+        interval_tolerance_minutes: override.interval_tolerance_minutes || null,
+      };
+    } else {
+      schedule = await queryOne<WorkSchedule>(
+        `
+          SELECT * FROM work_schedules 
+          WHERE employee_id = $1 AND day_of_week = $2
+        `,
+        [employeeId, dayOfWeek]
+      );
+    }
+  }
+  
+  // Se não houver schedule, não criar entrada vazia (mesmo comportamento do calculateDailyRecords)
+  if (!schedule) {
+    return false;
+  }
+  
+  // Identificar tipo de turno
+  const shiftType = schedule.shift_type || 'FULL_DAY';
+  const breakMinutes = schedule.break_minutes || null;
+  const intervalToleranceMinutes = schedule.interval_tolerance_minutes || 0;
+  const isSingleShift = shiftType === 'MORNING_ONLY' || shiftType === 'AFTERNOON_ONLY';
+  
+  // Preparar horários previstos
+  let scheduledTimes: ScheduledTimes;
+  if (shiftType === 'MORNING_ONLY') {
+    scheduledTimes = {
+      morningStart: schedule.morning_start || null,
+      morningEnd: null,
+      afternoonStart: null,
+      afternoonEnd: schedule.afternoon_end || null,
+    };
+  } else if (shiftType === 'AFTERNOON_ONLY') {
+    scheduledTimes = {
+      morningStart: null,
+      morningEnd: null,
+      afternoonStart: schedule.afternoon_start || null,
+      afternoonEnd: schedule.afternoon_end || null,
+    };
+  } else {
+    scheduledTimes = {
+      morningStart: schedule.morning_start || null,
+      morningEnd: schedule.morning_end || null,
+      afternoonStart: schedule.afternoon_start || null,
+      afternoonEnd: schedule.afternoon_end || null,
+    };
+  }
+  
+  // Preparar batidas vazias
+  const punchTimes: PunchTimes = {
+    morningEntry: null,
+    lunchExit: null,
+    afternoonEntry: null,
+    finalExit: null,
+  };
+  
+  // Preparar informações de turno único
+  const singleShiftInfoForCalc = isSingleShift
+    ? { 
+        shiftType: shiftType as 'MORNING_ONLY' | 'AFTERNOON_ONLY', 
+        breakMinutes: breakMinutes !== null && breakMinutes !== undefined ? breakMinutes : 20 
+      }
+    : undefined;
+  
+  // Calcular summary com batidas vazias
+  const summary = computeDaySummaryV2(punchTimes, scheduledTimes, date, singleShiftInfoForCalc, intervalToleranceMinutes, compensationType);
+  
+  // Preparar expected_start e expected_end
+  const workDateStr = format(workDate, 'yyyy-MM-dd');
+  let expectedStart: string | null = null;
+  let expectedEnd: string | null = null;
+  
+  if (schedule.morning_start) {
+    expectedStart = `${workDateStr} ${schedule.morning_start}:00`;
+  } else if (schedule.afternoon_start) {
+    expectedStart = `${workDateStr} ${schedule.afternoon_start}:00`;
+  }
+  
+  if (schedule.afternoon_end) {
+    expectedEnd = `${workDateStr} ${schedule.afternoon_end}:00`;
+  } else if (schedule.morning_end) {
+    expectedEnd = `${workDateStr} ${schedule.morning_end}:00`;
+  }
+  
+  // Criar entrada vazia no banco (apenas INSERT, sem UPDATE pois já verificamos que não existe)
+  await query(
+    `
+      INSERT INTO processed_records 
+        (employee_id, date, first_entry, last_exit, morning_entry, lunch_exit, afternoon_entry, final_exit,
+         expected_start, expected_end, delay_seconds, early_arrival_seconds, overtime_seconds, 
+         early_exit_seconds, worked_minutes, expected_minutes, balance_seconds, interval_excess_seconds,
+         atraso_clt_minutes, chegada_antec_clt_minutes, extra_clt_minutes, saida_antec_clt_minutes, saldo_clt_minutes, status,
+         occurrence_type, occurrence_hours_minutes, occurrence_duration,
+         occurrence_morning_entry, occurrence_lunch_exit, occurrence_afternoon_entry, occurrence_final_exit,
+         is_manual_morning_entry, is_manual_lunch_exit, is_manual_afternoon_entry, is_manual_final_exit)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+    `,
+    [
+      employeeId,
+      date,
+      null, // first_entry
+      null, // last_exit
+      null, // morning_entry
+      null, // lunch_exit
+      null, // afternoon_entry
+      null, // final_exit
+      expectedStart,
+      expectedEnd,
+      summary.delayMinutes * 60,
+      summary.earlyArrivalMinutes * 60,
+      summary.overtimeMinutes * 60,
+      summary.earlyExitMinutes * 60,
+      summary.workedMinutes,
+      summary.expectedMinutes,
+      summary.balanceSeconds,
+      summary.intervalExcessSeconds,
+      summary.atrasoCltMinutes,
+      summary.chegadaAntecCltMinutes,
+      summary.extraCltMinutes,
+      summary.saidaAntecCltMinutes,
+      summary.saldoCltMinutes,
+      summary.status,
+      null, // occurrence_type
+      null, // occurrence_hours_minutes
+      null, // occurrence_duration
+      false, // occurrence_morning_entry
+      false, // occurrence_lunch_exit
+      false, // occurrence_afternoon_entry
+      false, // occurrence_final_exit
+      false, // is_manual_morning_entry
+      false, // is_manual_lunch_exit
+      false, // is_manual_afternoon_entry
+      false, // is_manual_final_exit
+    ]
+  );
+  
+  // Log removido para reduzir verbosidade - o log agregado no generateMonthlyRecords já informa o resultado final
+  return true;
+}
+
+/**
+ * Gera entradas para todos os dias do mês para funcionários que têm batidas no mês
+ * Cria entradas vazias para dias sem batidas (mas com schedule)
+ * Otimizado para buscar registros existentes em batch
+ * 
+ * @param month - Mês no formato 'yyyy-MM'
+ * @param employeeIds - IDs dos funcionários que têm batidas no mês
+ */
+export async function generateMonthlyRecords(month: string, employeeIds: number[]): Promise<void> {
+  if (employeeIds.length === 0) {
+    return;
+  }
+
+  // Detectar Supabase
+  const useSupabase = !!process.env.SUPABASE_DB_URL;
+  
+  // Parsear mês para obter primeiro e último dia
+  const monthDate = parse(month, 'yyyy-MM', new Date());
+  const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+  const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+  
+  // Gerar array de todos os dias do mês
+  const allDays = eachDayOfInterval({ start: startOfMonth(monthDate), end: endOfMonth(monthDate) });
+  const allDates = allDays.map(day => format(day, 'yyyy-MM-dd'));
+  
+  // Buscar TODOS os registros existentes do mês para esses funcionários de uma vez (otimização)
+  // Usar IN com placeholders dinâmicos para compatibilidade com SQLite e Postgres
+  const placeholders = employeeIds.map((_, i) => `$${i + 1}`).join(',');
+  const existingRecords = await query<{ employee_id: number; date: string }>(
+    useSupabase
+      ? `SELECT employee_id, date FROM processed_records 
+         WHERE employee_id IN (${placeholders}) 
+         AND date >= $${employeeIds.length + 1}::date AND date <= $${employeeIds.length + 2}::date`
+      : `SELECT employee_id, date FROM processed_records 
+         WHERE employee_id IN (${placeholders})
+         AND date >= $${employeeIds.length + 1} AND date <= $${employeeIds.length + 2}`,
+    [...employeeIds, startDate, endDate]
+  );
+  
+  // Criar um Set para busca rápida: "employeeId-date"
+  const existingKeys = new Set<string>();
+  for (const record of existingRecords) {
+    const dateStr = typeof record.date === 'string' 
+      ? record.date.split('T')[0] 
+      : format(new Date(record.date), 'yyyy-MM-dd');
+    existingKeys.add(`${record.employee_id}-${dateStr}`);
+  }
+  
+  // Contar quantas entradas serão criadas
+  let entriesCreated = 0;
+  let entriesSkipped = 0;
+  
+  // Para cada funcionário, gerar entradas apenas para dias que não existem
+  for (const employeeId of employeeIds) {
+    for (const dateStr of allDates) {
+      const key = `${employeeId}-${dateStr}`;
+      
+      // Se já existe, pular (não criar novamente)
+      if (existingKeys.has(key)) {
+        entriesSkipped++;
+        continue;
+      }
+      
+      // Criar entrada vazia apenas se não existir
+      try {
+        const created = await createEmptyRecordIfNotExists(employeeId, dateStr);
+        if (created) {
+          entriesCreated++;
+        } else {
+          entriesSkipped++;
+        }
+      } catch (error: any) {
+        logger.error(`Erro ao criar entrada vazia para funcionário ${employeeId} na data ${dateStr}:`, error);
+        // Continua processando outros dias mesmo se um falhar
+      }
+    }
+  }
+  
+  logger.info(
+    `Geração de registros mensais concluída para mês ${month}: ` +
+    `${entriesCreated} entrada(s) criada(s), ${entriesSkipped} já existente(s), ` +
+    `${employeeIds.length} funcionário(s) processado(s)`
+  );
 }
 

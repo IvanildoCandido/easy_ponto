@@ -2,9 +2,35 @@
 
 import { useState } from 'react';
 
+type ProcessingStage = 
+  | 'idle'
+  | 'uploading'
+  | 'parsing'
+  | 'saving'
+  | 'calculating'
+  | 'generating'
+  | 'finalizing'
+  | 'complete';
+
+interface ProcessingStep {
+  stage: ProcessingStage;
+  label: string;
+  description: string;
+}
+
+const PROCESSING_STEPS: ProcessingStep[] = [
+  { stage: 'uploading', label: 'Enviando arquivo', description: 'Fazendo upload do arquivo para o servidor...' },
+  { stage: 'parsing', label: 'Analisando arquivo', description: 'Lendo e validando o conteúdo do arquivo...' },
+  { stage: 'saving', label: 'Salvando batidas', description: 'Armazenando registros de ponto no banco de dados...' },
+  { stage: 'calculating', label: 'Calculando registros', description: 'Processando cálculos de horas trabalhadas...' },
+  { stage: 'generating', label: 'Gerando mês completo', description: 'Criando entradas para todos os dias do mês...' },
+  { stage: 'finalizing', label: 'Finalizando', description: 'Restaurando ocorrências e ajustando dados...' },
+];
+
 export default function FileUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [currentStage, setCurrentStage] = useState<ProcessingStage>('idle');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -22,22 +48,54 @@ export default function FileUpload() {
 
     setUploading(true);
     setMessage(null);
+    setCurrentStage('uploading');
 
     try {
       const formData = new FormData();
       formData.append('file', file);
+
+      // Simular progresso durante o upload (a API não retorna progresso em tempo real)
+      // Vamos atualizar as etapas baseado no tempo estimado
+      const progressInterval = setInterval(() => {
+        setCurrentStage((prev) => {
+          const stages: ProcessingStage[] = ['uploading', 'parsing', 'saving', 'calculating', 'generating', 'finalizing'];
+          const currentIndex = stages.indexOf(prev);
+          if (currentIndex < stages.length - 1) {
+            return stages[currentIndex + 1];
+          }
+          return prev;
+        });
+      }, 2000); // Muda de etapa a cada 2 segundos
 
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
 
+      clearInterval(progressInterval);
+      setCurrentStage('complete');
+
       const data = await response.json();
 
       if (response.ok) {
+        const successMessage = data.message || 'Arquivo processado com sucesso!';
+        const details = [];
+        if (data.recordsProcessed) {
+          details.push(`${data.recordsProcessed} registro(s)`);
+        }
+        if (data.employeesProcessed) {
+          details.push(`${data.employeesProcessed} funcionário(s)`);
+        }
+        if (data.datesProcessed && Array.isArray(data.datesProcessed)) {
+          details.push(`${data.datesProcessed.length} data(s)`);
+        }
+        if (data.monthsProcessed) {
+          details.push(`${data.monthsProcessed} mês(es)`);
+        }
+        
         setMessage({
           type: 'success',
-          text: data.message || 'Arquivo processado com sucesso!',
+          text: details.length > 0 ? `${successMessage} Detalhes: ${details.join(', ')}.` : successMessage,
         });
         setFile(null);
         // Reset file input
@@ -56,6 +114,10 @@ export default function FileUpload() {
       });
     } finally {
       setUploading(false);
+      // Reset stage após um pequeno delay para mostrar "complete"
+      setTimeout(() => {
+        setCurrentStage('idle');
+      }, 2000);
     }
   };
 
@@ -124,6 +186,66 @@ export default function FileUpload() {
             </>
           )}
         </button>
+
+        {uploading && (
+          <div className="mt-6 p-6 bg-gradient-to-br from-neutral-50 to-primary-50/30 rounded-2xl border border-neutral-200">
+            <h3 className="font-semibold text-neutral-900 mb-4 flex items-center space-x-2">
+              <svg className="w-5 h-5 text-primary-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>Processamento em andamento</span>
+            </h3>
+            <div className="space-y-3">
+              {PROCESSING_STEPS.map((step, index) => {
+                const isActive = step.stage === currentStage;
+                const isCompleted = PROCESSING_STEPS.findIndex(s => s.stage === currentStage) > index;
+
+                return (
+                  <div
+                    key={step.stage}
+                    className={`flex items-start space-x-3 p-3 rounded-lg transition-all duration-300 ${
+                      isActive
+                        ? 'bg-primary-100 border-2 border-primary-300 shadow-sm'
+                        : isCompleted
+                        ? 'bg-green-50 border border-green-200'
+                        : 'bg-neutral-100 border border-neutral-200 opacity-60'
+                    }`}
+                  >
+                    <div className="flex-shrink-0 mt-0.5">
+                      {isCompleted ? (
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : isActive ? (
+                        <svg className="w-5 h-5 text-primary-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      ) : (
+                        <div className="w-5 h-5 rounded-full border-2 border-neutral-300 bg-white"></div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className={`text-sm font-semibold ${
+                          isActive ? 'text-primary-900' : isCompleted ? 'text-green-800' : 'text-neutral-600'
+                        }`}
+                      >
+                        {step.label}
+                      </p>
+                      <p
+                        className={`text-xs mt-1 ${
+                          isActive ? 'text-primary-700' : isCompleted ? 'text-green-700' : 'text-neutral-500'
+                        }`}
+                      >
+                        {step.description}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {message && (
           <div

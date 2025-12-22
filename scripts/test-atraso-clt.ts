@@ -94,3 +94,4 @@ console.log('\nLogs:');
 raquelSummarySingleShift.logs.forEach(log => console.log(`  ${log}`));
 
 
+

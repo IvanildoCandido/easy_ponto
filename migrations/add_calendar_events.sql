@@ -24,3 +24,4 @@ COMMENT ON COLUMN calendar_events.event_type IS 'Tipo do evento: FERIADO ou DSR'
 COMMENT ON COLUMN calendar_events.description IS 'Descrição do evento (ex: "Natal", "DSR - Domingo")';
 COMMENT ON COLUMN calendar_events.applies_to_all_employees IS 'Indica se o evento se aplica a todos os funcionários (sempre true para feriados e DSR)';
 
+

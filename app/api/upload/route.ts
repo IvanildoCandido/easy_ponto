@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseFileContent, processTimeRecords } from '@/infrastructure/file-processor';
-import { calculateDailyRecords } from '@/application/daily-calculation-service';
+import { calculateDailyRecords, generateMonthlyRecords } from '@/application/daily-calculation-service';
 import { logger } from '@/infrastructure/logger';
 import { Buffer } from 'buffer';
+import { parse, format } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 
@@ -126,6 +127,66 @@ export async function POST(request: NextRequest) {
       }
     }
     
+    // Gerar entradas para todos os dias do mês para funcionários que têm batidas
+    // Identificar meses únicos nas datas processadas
+    const months = new Set<string>();
+    const employeeIdsByMonth = new Map<string, Set<number>>();
+    
+    // Agrupar datas por mês
+    for (const date of uniqueDates) {
+      try {
+        const dateObj = parse(date, 'yyyy-MM-dd', new Date());
+        const month = format(dateObj, 'yyyy-MM');
+        months.add(month);
+      } catch (error: any) {
+        logger.error(`Erro ao processar data ${date}:`, error);
+      }
+    }
+    
+    // Para cada mês, buscar todos os funcionários que têm batidas em qualquer data do mês
+    const { query } = await import('@/infrastructure/database');
+    const useSupabase = !!process.env.SUPABASE_DB_URL;
+    
+    for (const month of months) {
+      try {
+        // Calcular início e fim do mês
+        const monthDate = parse(month, 'yyyy-MM', new Date());
+        const startDate = format(monthDate, 'yyyy-MM-01');
+        const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+        const endDate = format(lastDay, 'yyyy-MM-dd');
+        
+        // Buscar todos os funcionários únicos que têm batidas neste mês
+        const employeesWithRecords = await query<{ employee_id: number }>(
+          useSupabase
+            ? `SELECT DISTINCT employee_id FROM time_records WHERE DATE(datetime AT TIME ZONE 'America/Sao_Paulo') >= $1::date AND DATE(datetime AT TIME ZONE 'America/Sao_Paulo') <= $2::date`
+            : `SELECT DISTINCT employee_id FROM time_records WHERE date(datetime) >= $1 AND date(datetime) <= $2`,
+          [startDate, endDate]
+        );
+        
+        const employeeIds = employeesWithRecords.map(emp => emp.employee_id);
+        if (employeeIds.length > 0) {
+          employeeIdsByMonth.set(month, new Set(employeeIds));
+          logger.info(`Encontrados ${employeeIds.length} funcionário(s) com batidas no mês ${month}`);
+        }
+      } catch (error: any) {
+        logger.error(`Erro ao buscar funcionários para mês ${month}:`, error);
+      }
+    }
+    
+    // Gerar registros para todos os meses encontrados
+    for (const month of months) {
+      const employeeIds = Array.from(employeeIdsByMonth.get(month) || []);
+      if (employeeIds.length > 0) {
+        try {
+          logger.info(`Gerando registros mensais para mês ${month} e ${employeeIds.length} funcionário(s)...`);
+          await generateMonthlyRecords(month, employeeIds);
+        } catch (error: any) {
+          logger.error(`Erro ao gerar registros mensais para mês ${month}:`, error);
+          // Continua processando outros meses mesmo se um falhar
+        }
+      }
+    }
+    
     // Restaurar ocorrências após recálculo
     // IMPORTANTE: Fazer UPDATE diretamente para garantir que as ocorrências sejam preservadas
     if (savedOccurrences.size > 0) {
@@ -207,11 +268,26 @@ export async function POST(request: NextRequest) {
       }
     }
     
+    // Contar funcionários únicos processados
+    const uniqueEmployeeIds = new Set<number>();
+    for (const record of records) {
+      if (record.EnNo) {
+        uniqueEmployeeIds.add(record.EnNo);
+      }
+    }
+    
+    // Contar meses processados
+    const monthsProcessed = Array.from(months);
+    
+    const successMessage = `Processamento concluído! ${records.length} registro(s) de ${uniqueEmployeeIds.size} funcionário(s) processado(s) em ${monthsProcessed.length} mês(es).`;
+    
     return NextResponse.json({
       success: true,
-      message: `${records.length} registros processados com sucesso`,
+      message: successMessage,
       recordsProcessed: records.length,
-      datesProcessed: Array.from(uniqueDates)
+      employeesProcessed: uniqueEmployeeIds.size,
+      datesProcessed: Array.from(uniqueDates),
+      monthsProcessed: monthsProcessed.length,
     });
   } catch (error: any) {
     logger.error('Erro geral ao processar arquivo:', error);

@@ -30,3 +30,4 @@ COMMENT ON COLUMN schedule_overrides.break_minutes IS 'Minutos do intervalo obri
 
 
 
+

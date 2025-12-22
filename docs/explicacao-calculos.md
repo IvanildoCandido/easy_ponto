@@ -189,3 +189,4 @@ Para verificar se há algum problema, precisamos:
 3. Verificar se o **teto diário de 10 minutos** deve zerar valores individuais ou não
 
 
+

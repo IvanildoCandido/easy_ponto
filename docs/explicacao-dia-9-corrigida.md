@@ -44,3 +44,4 @@ A diferença entre os 8 minutos iniciais e os 7 minutos finais se deve ao **desc
 O funcionário saiu para almoço às 11:59 e voltou às 14:00, totalizando 121 minutos de intervalo, quando o previsto é 120 minutos (de 12:00 às 14:00). Esse 1 minuto de excesso foi descontado das horas extras, resultando em 7 minutos ao invés de 8.
 
 
+

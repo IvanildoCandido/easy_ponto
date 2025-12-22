@@ -6,6 +6,7 @@
 import { query } from './database';
 import { TimeRecord } from '../lib/types';
 import { logger } from './logger';
+import { format } from 'date-fns';
 
 export function parseFileContent(content: string): TimeRecord[] {
   if (!content || typeof content !== 'string') {
@@ -164,7 +165,16 @@ export async function processTimeRecords(records: TimeRecord[]) {
       );
       
       for (const occ of existingOccurrences) {
-        const key = `${occ.employee_id}-${occ.date}`;
+        // Normalizar data para formato 'yyyy-MM-dd' (Postgres pode retornar Date object)
+        let dateStr: string;
+        if (occ.date instanceof Date) {
+          dateStr = format(occ.date, 'yyyy-MM-dd');
+        } else if (typeof occ.date === 'string') {
+          dateStr = occ.date.split('T')[0]; // Remove hora se houver
+        } else {
+          dateStr = String(occ.date).split('T')[0];
+        }
+        const key = `${occ.employee_id}-${dateStr}`;
         savedOccurrences.set(key, {
           occurrence_type: occ.occurrence_type,
           occurrence_hours_minutes: occ.occurrence_hours_minutes,
@@ -204,7 +214,16 @@ export async function processTimeRecords(records: TimeRecord[]) {
         );
         
         for (const occ of existingOccurrences) {
-          const key = `${occ.employee_id}-${occ.date}`;
+          // Normalizar data para formato 'yyyy-MM-dd' (garantir formato consistente)
+          let dateStr: string;
+          if (occ.date instanceof Date) {
+            dateStr = format(occ.date, 'yyyy-MM-dd');
+          } else if (typeof occ.date === 'string') {
+            dateStr = occ.date.split('T')[0]; // Remove hora se houver
+          } else {
+            dateStr = String(occ.date).split('T')[0];
+          }
+          const key = `${occ.employee_id}-${dateStr}`;
           savedOccurrences.set(key, {
             occurrence_type: occ.occurrence_type,
             occurrence_hours_minutes: occ.occurrence_hours_minutes,
