@@ -25,3 +25,5 @@ COMMENT ON COLUMN work_schedules.interval_tolerance_minutes IS 'Tolerância de i
 
 
 
+
+

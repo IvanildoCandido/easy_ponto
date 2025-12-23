@@ -25,3 +25,5 @@ COMMENT ON COLUMN calendar_events.description IS 'Descrição do evento (ex: "Na
 COMMENT ON COLUMN calendar_events.applies_to_all_employees IS 'Indica se o evento se aplica a todos os funcionários (sempre true para feriados e DSR)';
 
 
+
+

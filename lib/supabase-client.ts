@@ -63,7 +63,31 @@ export async function getSession() {
     }
     
     const client = getSupabaseClient();
-    const { data: { session }, error } = await client.auth.getSession();
+    
+    // Adicionar timeout para evitar travamento
+    const sessionPromise = client.auth.getSession();
+    const timeoutPromise = new Promise<{ data: { session: null }, error: null }>((resolve) => {
+      setTimeout(() => {
+        resolve({ data: { session: null }, error: null });
+      }, 5000); // 5 segundos de timeout
+    });
+    
+    const result = await Promise.race([sessionPromise, timeoutPromise]);
+    
+    // Se foi timeout, retornar null e limpar storages
+    if (!result.data?.session && !result.error) {
+      console.warn('Timeout ao obter sessão do Supabase');
+      try {
+        localStorage.removeItem('easy-ponto-auth');
+        localStorage.removeItem('easy-ponto-login-time');
+        sessionStorage.clear();
+      } catch (e) {
+        // Ignorar erros ao limpar
+      }
+      return null;
+    }
+    
+    const { data: { session }, error } = result as any;
     
     if (error) {
       console.error('Erro ao obter sessão:', error);
@@ -71,6 +95,7 @@ export async function getSession() {
       try {
         localStorage.removeItem('easy-ponto-auth');
         localStorage.removeItem('easy-ponto-login-time');
+        sessionStorage.clear();
       } catch (e) {
         // Ignorar erros ao limpar
       }
@@ -90,6 +115,7 @@ export async function getSession() {
       try {
         localStorage.removeItem('easy-ponto-auth');
         localStorage.removeItem('easy-ponto-login-time');
+        sessionStorage.clear();
       } catch (e) {
         // Ignorar erros ao limpar
       }

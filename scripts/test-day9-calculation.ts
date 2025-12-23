@@ -169,3 +169,5 @@ console.log(`   Calculado: H.EXTRA_CLT = ${extraBruto}min, SALDO_CLT = ${saldoCl
 
 
 
+
+

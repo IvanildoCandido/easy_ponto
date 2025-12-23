@@ -45,3 +45,5 @@ COMMENT ON COLUMN processed_records.is_manual_final_exit IS
 
 
 
+
+

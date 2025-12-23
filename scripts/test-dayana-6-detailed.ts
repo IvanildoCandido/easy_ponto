@@ -89,3 +89,5 @@ console.log(`  Saída: ${saida2}min depois (após tolerância: ${saida2 - 5}min 
 
 
 
+
+

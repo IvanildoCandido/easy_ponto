@@ -14,13 +14,71 @@ export default function LoginPage() {
 
   // Verificar se já está logado
   useEffect(() => {
+    let isMounted = true;
+    let timeoutId: NodeJS.Timeout;
+
     const checkSession = async () => {
-      const session = await getSession();
-      if (session) {
-        router.push('/');
+      try {
+        // Timeout de segurança para evitar travamento
+        const sessionPromise = getSession();
+        const timeoutPromise = new Promise<null>((resolve) => {
+          timeoutId = setTimeout(() => {
+            console.warn('Timeout ao verificar sessão na página de login');
+            resolve(null);
+          }, 3000); // 3 segundos de timeout
+        });
+
+        const session = await Promise.race([sessionPromise, timeoutPromise]);
+
+        if (!isMounted) return;
+
+        if (session) {
+          router.push('/');
+        } else {
+          // Se não há sessão válida, garantir que os storages estão limpos
+          if (typeof window !== 'undefined') {
+            try {
+              // Limpar storages para garantir estado limpo
+              localStorage.removeItem('easy-ponto-auth');
+              localStorage.removeItem('easy-ponto-login-time');
+              sessionStorage.clear();
+            } catch (err) {
+              // Ignorar erros ao limpar
+            }
+          }
+          // Garantir que o loading está desativado
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Erro ao verificar sessão:', error);
+        if (!isMounted) return;
+
+        // Em caso de erro, limpar tudo e garantir que pode fazer login
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.removeItem('easy-ponto-auth');
+            localStorage.removeItem('easy-ponto-login-time');
+            sessionStorage.clear();
+          } catch (err) {
+            // Ignorar erros ao limpar
+          }
+        }
+        setLoading(false);
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
       }
     };
+
     checkSession();
+
+    return () => {
+      isMounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -29,11 +87,33 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // Limpar storages antes de fazer login para garantir estado limpo
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem('easy-ponto-auth');
+          localStorage.removeItem('easy-ponto-login-time');
+          sessionStorage.clear();
+        } catch (err) {
+          // Ignorar erros ao limpar
+        }
+      }
+
       await signIn(email, password);
       router.push('/');
       router.refresh();
     } catch (err: any) {
       setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
+      
+      // Em caso de erro, garantir que os storages estão limpos
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem('easy-ponto-auth');
+          localStorage.removeItem('easy-ponto-login-time');
+          sessionStorage.clear();
+        } catch (clearErr) {
+          // Ignorar erros ao limpar
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -118,5 +198,7 @@ export default function LoginPage() {
     </div>
   );
 }
+
+
 
 
