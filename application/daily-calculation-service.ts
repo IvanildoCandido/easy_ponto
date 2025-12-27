@@ -210,8 +210,9 @@ export async function calculateDailyRecords(date: string) {
     if (!schedule && manualCorrection) {
       logger.warn(`Funcionário ${empId} - ${date}: Nenhum schedule encontrado, mas há correção manual. Usando schedule padrão para salvar correção.`);
       // Criar um schedule mínimo para permitir o processamento da correção manual
+      // Usar -1 como id temporário (não é um ID válido do banco, apenas para satisfazer o tipo)
       schedule = {
-        id: null,
+        id: -1,
         employee_id: empId,
         day_of_week: dayOfWeek || 1,
         morning_start: '08:00',
