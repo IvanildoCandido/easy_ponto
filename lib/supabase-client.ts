@@ -1,16 +1,13 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Cliente Supabase para autenticação
-// Inicializado apenas no cliente para evitar erros de SSR
 let supabaseClient: SupabaseClient | null = null;
 
 function getSupabaseClient(): SupabaseClient {
-  // Se já existe, retornar
   if (supabaseClient) {
     return supabaseClient;
   }
 
-  // Verificar se estamos no cliente
   if (typeof window === 'undefined') {
     throw new Error(
       'Supabase client só pode ser inicializado no cliente. Use apenas em componentes client-side.'
@@ -26,7 +23,6 @@ function getSupabaseClient(): SupabaseClient {
     );
   }
 
-  // Criar e armazenar o cliente
   supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: true,
@@ -34,8 +30,6 @@ function getSupabaseClient(): SupabaseClient {
       detectSessionInUrl: true,
       storage: window.localStorage,
       storageKey: 'easy-ponto-auth',
-      // O Supabase gerencia refresh tokens automaticamente
-      // Vamos controlar a expiração de 24 horas manualmente no código
     },
   });
 
@@ -56,12 +50,11 @@ export const supabase = new Proxy({} as SupabaseClient, {
 
 // Helper para verificar se o usuário está autenticado
 export async function getSession() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  
   try {
-    // Se não estiver no cliente, retornar null
-    if (typeof window === 'undefined') {
-      return null;
-    }
-    
     const client = getSupabaseClient();
     
     // Adicionar timeout para evitar travamento
@@ -69,21 +62,14 @@ export async function getSession() {
     const timeoutPromise = new Promise<{ data: { session: null }, error: null }>((resolve) => {
       setTimeout(() => {
         resolve({ data: { session: null }, error: null });
-      }, 5000); // 5 segundos de timeout
+      }, 3000); // 3 segundos de timeout
     });
     
     const result = await Promise.race([sessionPromise, timeoutPromise]);
     
-    // Se foi timeout, retornar null e limpar storages
+    // Se foi timeout, retornar null
     if (!result.data?.session && !result.error) {
       console.warn('Timeout ao obter sessão do Supabase');
-      try {
-        localStorage.removeItem('easy-ponto-auth');
-        localStorage.removeItem('easy-ponto-login-time');
-        sessionStorage.clear();
-      } catch (e) {
-        // Ignorar erros ao limpar
-      }
       return null;
     }
     
@@ -91,34 +77,29 @@ export async function getSession() {
     
     if (error) {
       console.error('Erro ao obter sessão:', error);
-      // Se houver erro, limpar o localStorage corrompido
-      try {
-        localStorage.removeItem('easy-ponto-auth');
-        localStorage.removeItem('easy-ponto-login-time');
-        sessionStorage.clear();
-      } catch (e) {
-        // Ignorar erros ao limpar
+      // Se houver erro de token inválido, limpar localStorage
+      if (error.message?.includes('token') || error.message?.includes('expired')) {
+        try {
+          localStorage.removeItem('easy-ponto-auth');
+        } catch (e) {
+          // Ignorar erro ao limpar
+        }
       }
       return null;
     }
     
-    // Validar se a sessão tem um usuário válido
     if (!session?.user) {
       return null;
     }
     
     return session;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro ao obter sessão:', error);
-    // Em caso de erro (token inválido, etc), limpar localStorage
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem('easy-ponto-auth');
-        localStorage.removeItem('easy-ponto-login-time');
-        sessionStorage.clear();
-      } catch (e) {
-        // Ignorar erros ao limpar
-      }
+    // Em caso de erro grave, tentar limpar localStorage
+    try {
+      localStorage.removeItem('easy-ponto-auth');
+    } catch (e) {
+      // Ignorar erro ao limpar
     }
     return null;
   }
@@ -126,19 +107,8 @@ export async function getSession() {
 
 // Helper para fazer logout
 export async function signOut() {
-  try {
-    const client = getSupabaseClient();
-    const { error } = await client.auth.signOut();
-    if (error) {
-      console.error('Erro ao fazer logout:', error);
-      throw error;
-    }
-  } catch (error) {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    throw error;
-  }
+  const client = getSupabaseClient();
+  await client.auth.signOut();
 }
 
 // Helper para fazer login
@@ -153,31 +123,43 @@ export async function signIn(email: string, password: string) {
     throw error;
   }
   
-  // Armazenar timestamp do login para controle de expiração de 24 horas
-  if (typeof window !== 'undefined' && data.session) {
-    const loginTimestamp = Date.now();
-    localStorage.setItem('easy-ponto-login-time', loginTimestamp.toString());
-  }
-  
   return data;
 }
 
 // Helper para obter o usuário atual
 export async function getCurrentUser() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  
   try {
     const client = getSupabaseClient();
-    const { data: { user }, error } = await client.auth.getUser();
-    if (error) {
-      console.error('Erro ao obter usuário:', error);
+    
+    // Adicionar timeout para evitar travamento
+    const userPromise = client.auth.getUser();
+    const timeoutPromise = new Promise<{ data: { user: null }, error: null }>((resolve) => {
+      setTimeout(() => {
+        resolve({ data: { user: null }, error: null });
+      }, 3000); // 3 segundos de timeout
+    });
+    
+    const result = await Promise.race([userPromise, timeoutPromise]);
+    
+    // Se foi timeout, retornar null
+    if (!result.data?.user && !result.error) {
+      console.warn('Timeout ao obter usuário do Supabase');
       return null;
     }
+    
+    const { data: { user }, error } = result as any;
+    
+    if (error || !user) {
+      return null;
+    }
+    
     return user;
   } catch (error) {
-    // Se não estiver no cliente, retornar null
-    if (typeof window === 'undefined') {
-      return null;
-    }
-    throw error;
+    console.error('Erro ao obter usuário:', error);
+    return null;
   }
 }
-

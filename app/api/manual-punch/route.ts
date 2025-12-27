@@ -262,17 +262,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Recalcular o registro para aplicar a correção manual
+    // IMPORTANTE: Chamar calculateDailyRecords para TODOS os funcionários daquela data
+    // pois pode haver múltiplos funcionários com correções manuais
     try {
+      logger.info(`[manual-punch] Recalculando registros da data ${date} para aplicar correção manual do funcionário ${employeeId}`);
       await calculateDailyRecords(date);
       logger.info(`[manual-punch] Registro recalculado para data ${date} após correção manual`);
     } catch (error: any) {
       logger.error(`[manual-punch] Erro ao recalcular após correção manual:`, error);
-      // Continuar mesmo se o recálculo falhar
+      // Não retornar erro, apenas logar, pois a correção foi salva
     }
 
     return NextResponse.json({
       success: true,
       data: result[0],
+      message: 'Correção manual salva e registros recalculados',
     });
   } catch (error: any) {
     logger.error('[manual-punch POST] Erro:', error);

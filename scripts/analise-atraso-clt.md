@@ -42,3 +42,4 @@ No caso de Maria Raquel, o excesso de 7min foi totalmente descontado das 40min d
 
 
 
+

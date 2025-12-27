@@ -52,8 +52,43 @@ export async function calculateDailyRecords(date: string) {
   const jsDayOfWeek = workDate.getDay();
   const dayOfWeek = jsDayOfWeek === 0 ? null : jsDayOfWeek; // null para domingo, 1-6 para segunda-sábado
   
-  for (const [employeeId, employeeRecords] of Object.entries(byEmployee)) {
-    const empId = parseInt(employeeId);
+  // IMPORTANTE: Também processar funcionários que têm correções manuais ou registros processados
+  // mas não têm batidas no arquivo (para atualizar quando há correção manual)
+  const employeesWithManualCorrections = await query<{ employee_id: number }>(
+    useSupabase
+      ? `SELECT DISTINCT employee_id FROM manual_punch_corrections WHERE date = $1::date`
+      : `SELECT DISTINCT employee_id FROM manual_punch_corrections WHERE date = $1`,
+    [date]
+  );
+  
+  const employeesWithProcessedRecords = await query<{ employee_id: number }>(
+    useSupabase
+      ? `SELECT DISTINCT employee_id FROM processed_records WHERE date = $1::date`
+      : `SELECT DISTINCT employee_id FROM processed_records WHERE date = $1`,
+    [date]
+  );
+  
+  // Criar um Set com todos os IDs de funcionários que precisam ser processados
+  const employeesToProcess = new Set<number>();
+  
+  // Adicionar funcionários que têm batidas no arquivo
+  for (const empId of Object.keys(byEmployee).map(Number)) {
+    employeesToProcess.add(empId);
+  }
+  
+  // Adicionar funcionários que têm correções manuais
+  for (const emp of employeesWithManualCorrections) {
+    employeesToProcess.add(emp.employee_id);
+  }
+  
+  // Adicionar funcionários que já têm registros processados (para garantir atualização)
+  for (const emp of employeesWithProcessedRecords) {
+    employeesToProcess.add(emp.employee_id);
+  }
+  
+  // Processar todos os funcionários que precisam ser processados
+  for (const empId of employeesToProcess) {
+    const employeeRecords = byEmployee[empId] || []; // Pode ser array vazio se não houver batidas
     
     // Buscar dados do funcionário para obter compensation_type
     const employee = await queryOne<{ compensation_type?: 'BANCO_DE_HORAS' | 'PAGAMENTO_FOLHA' | null }>(
@@ -151,9 +186,26 @@ export async function calculateDailyRecords(date: string) {
     const intervalToleranceMinutes = schedule?.interval_tolerance_minutes || 0; // Tolerância de intervalo (padrão: 0 = sem tolerância)
     const isSingleShift = shiftType === 'MORNING_ONLY' || shiftType === 'AFTERNOON_ONLY';
     
-    if (!schedule) {
+    // Se não há schedule mas há correção manual, ainda precisamos salvar os dados da correção manual
+    // Criar um schedule básico para permitir o cálculo (mesmo que vazio)
+    if (!schedule && manualCorrection) {
+      logger.warn(`Funcionário ${empId} - ${date}: Nenhum schedule encontrado, mas há correção manual. Usando schedule padrão para salvar correção.`);
+      // Criar um schedule mínimo para permitir o processamento da correção manual
+      schedule = {
+        id: null,
+        employee_id: empId,
+        day_of_week: dayOfWeek || 1,
+        morning_start: '08:00',
+        morning_end: '12:00',
+        afternoon_start: '14:00',
+        afternoon_end: '18:00',
+        shift_type: 'FULL_DAY',
+        break_minutes: 60,
+        interval_tolerance_minutes: 0,
+      };
+    } else if (!schedule) {
       logger.warn(`Funcionário ${empId} - ${date}: Nenhum schedule encontrado para este dia`);
-      // Pular processamento se não houver schedule (não é possível calcular sem horário previsto)
+      // Pular processamento se não houver schedule e não houver correção manual
       continue;
     }
     
@@ -231,7 +283,13 @@ export async function calculateDailyRecords(date: string) {
     
     // Se houver correção manual, usar ela diretamente
     if (manualCorrection) {
-      logger.info(`[calculateDailyRecords] Usando correção manual para funcionário ${empId} na data ${date}`);
+      logger.info(
+        `[calculateDailyRecords] Usando correção manual para funcionário ${empId} na data ${date}: ` +
+        `ME=${manualCorrection.morning_entry || 'null'}, ` +
+        `LE=${manualCorrection.lunch_exit || 'null'}, ` +
+        `AE=${manualCorrection.afternoon_entry || 'null'}, ` +
+        `FE=${manualCorrection.final_exit || 'null'}`
+      );
       morningEntry = manualCorrection.morning_entry;
       lunchExit = manualCorrection.lunch_exit;
       afternoonEntry = manualCorrection.afternoon_entry;
@@ -551,7 +609,7 @@ export async function calculateDailyRecords(date: string) {
         date,
         firstEntry,
         lastExit,
-        morningEntry,
+        morningEntry, // Pode ser null ou string com datetime completo (ex: "2025-12-01 08:00:00")
         lunchExit,
         afternoonEntry,
         finalExit,
@@ -584,6 +642,14 @@ export async function calculateDailyRecords(date: string) {
         isManualFinalExit, // $35
       ]
     );
+    
+    // Log para debug: verificar se os dados foram salvos corretamente quando há correção manual
+    if (manualCorrection) {
+      logger.info(
+        `[calculateDailyRecords] Registro salvo para funcionário ${empId} na data ${date}: ` +
+        `ME=${morningEntry || 'null'}, LE=${lunchExit || 'null'}, AE=${afternoonEntry || 'null'}, FE=${finalExit || 'null'}`
+      );
+    }
   }
 }
 

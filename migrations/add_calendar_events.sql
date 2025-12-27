@@ -27,3 +27,4 @@ COMMENT ON COLUMN calendar_events.applies_to_all_employees IS 'Indica se o event
 
 
 
+

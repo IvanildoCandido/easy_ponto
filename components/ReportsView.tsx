@@ -150,10 +150,32 @@ export default function ReportsView() {
 
   const formatTime = (time: string | null) => {
     if (!time) return '-';
-    return new Date(time).toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    
+    // Se já estiver no formato HH:mm, retornar como está
+    if (/^\d{2}:\d{2}$/.test(time)) {
+      return time;
+    }
+    
+    // Se estiver no formato yyyy-MM-dd HH:mm:ss ou similar, extrair apenas HH:mm
+    const timeMatch = time.match(/(\d{2}):(\d{2})(?::\d{2})?/);
+    if (timeMatch) {
+      return `${timeMatch[1]}:${timeMatch[2]}`;
+    }
+    
+    // Tentar converter para Date como fallback
+    try {
+      const date = new Date(time);
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      }
+    } catch (e) {
+      // Ignorar erro
+    }
+    
+    return '-';
   };
 
   const formatDate = (date: string | Date | null | undefined) => {
@@ -1119,8 +1141,10 @@ export default function ReportsView() {
                 const balance = workedMinutes - expectedMinutes;
                 const isInconsistent = (report.status || 'OK') === 'INCONSISTENTE';
                 const isSingleShift = report.shift_type === 'MORNING_ONLY' || report.shift_type === 'AFTERNOON_ONLY';
+                // Criar key única: usar id se existir, senão usar employee_id + date
+                const rowKey = report.id ? report.id : `calendar-${report.employee_id}-${report.date}`;
                 return (
-                  <tr key={report.id} className="hover:bg-primary-50/30 transition-colors">
+                  <tr key={rowKey} className="hover:bg-primary-50/30 transition-colors">
                     <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-900">
                       {formatDate(report.date)}
                       {isInconsistent && (

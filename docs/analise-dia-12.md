@@ -67,3 +67,4 @@ O sistema **NÃO está descontando o excesso de intervalo das horas extras CLT**
 
 
 
+
