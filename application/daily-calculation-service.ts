@@ -54,19 +54,25 @@ export async function calculateDailyRecords(date: string) {
   
   // IMPORTANTE: Também processar funcionários que têm correções manuais ou registros processados
   // mas não têm batidas no arquivo (para atualizar quando há correção manual)
-  const employeesWithManualCorrections = await query<{ employee_id: number }>(
+  const employeesWithManualCorrectionsRaw = await query<{ employee_id: number }>(
     useSupabase
       ? `SELECT DISTINCT employee_id FROM manual_punch_corrections WHERE date = $1::date`
       : `SELECT DISTINCT employee_id FROM manual_punch_corrections WHERE date = $1`,
     [date]
   );
+  const employeesWithManualCorrections = Array.isArray(employeesWithManualCorrectionsRaw) 
+    ? employeesWithManualCorrectionsRaw 
+    : [];
   
-  const employeesWithProcessedRecords = await query<{ employee_id: number }>(
+  const employeesWithProcessedRecordsRaw = await query<{ employee_id: number }>(
     useSupabase
       ? `SELECT DISTINCT employee_id FROM processed_records WHERE date = $1::date`
       : `SELECT DISTINCT employee_id FROM processed_records WHERE date = $1`,
     [date]
   );
+  const employeesWithProcessedRecords = Array.isArray(employeesWithProcessedRecordsRaw) 
+    ? employeesWithProcessedRecordsRaw 
+    : [];
   
   // Criar um Set com todos os IDs de funcionários que precisam ser processados
   const employeesToProcess = new Set<number>();
@@ -186,6 +192,19 @@ export async function calculateDailyRecords(date: string) {
     const intervalToleranceMinutes = schedule?.interval_tolerance_minutes || 0; // Tolerância de intervalo (padrão: 0 = sem tolerância)
     const isSingleShift = shiftType === 'MORNING_ONLY' || shiftType === 'AFTERNOON_ONLY';
     
+    // Buscar correção manual ANTES de verificar schedule (para saber se precisa criar schedule padrão)
+    const manualCorrection = await queryOne<{
+      morning_entry: string | null;
+      lunch_exit: string | null;
+      afternoon_entry: string | null;
+      final_exit: string | null;
+    }>(
+      `SELECT morning_entry, lunch_exit, afternoon_entry, final_exit
+       FROM manual_punch_corrections 
+       WHERE employee_id = $1 AND date = $2`,
+      [empId, date]
+    );
+    
     // Se não há schedule mas há correção manual, ainda precisamos salvar os dados da correção manual
     // Criar um schedule básico para permitir o cálculo (mesmo que vazio)
     if (!schedule && manualCorrection) {
@@ -244,19 +263,7 @@ export async function calculateDailyRecords(date: string) {
       new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
     );
     
-    // Buscar correções manuais ANTES de processar batidas do arquivo
-    // Se houver correção manual, ela tem prioridade sobre as batidas do arquivo
-    const manualCorrection = await queryOne<{
-      morning_entry: string | null;
-      lunch_exit: string | null;
-      afternoon_entry: string | null;
-      final_exit: string | null;
-    }>(
-      `SELECT morning_entry, lunch_exit, afternoon_entry, final_exit
-       FROM manual_punch_corrections 
-       WHERE employee_id = $1 AND date = $2`,
-      [empId, date]
-    );
+    // manualCorrection já foi buscado anteriormente (antes de verificar schedule)
     
     // Buscar ocorrências existentes ANTES de identificar batidas (para usar na lógica inteligente)
     const existingRecord = await queryOne<{
