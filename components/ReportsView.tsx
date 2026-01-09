@@ -42,7 +42,7 @@ interface Report {
   saida_antec_clt_minutes?: number; // Saída antecipada CLT (após tolerância)
   saldo_clt_minutes?: number; // SALDO_CLT (para fins de pagamento/banco de horas legal)
   status: 'OK' | 'INCONSISTENTE';
-  occurrence_type?: 'FERIADO' | 'FALTA' | 'FOLGA' | 'ATESTADO' | 'DECLARACAO' | 'ESQUECIMENTO_BATIDA' | null;
+  occurrence_type?: 'FERIADO' | 'FALTA' | 'FOLGA' | 'ATESTADO' | 'DECLARACAO' | 'ESQUECIMENTO_BATIDA' | 'LICENCA' | null;
   occurrence_morning_entry?: boolean;
   occurrence_lunch_exit?: boolean;
   occurrence_afternoon_entry?: boolean;
@@ -384,6 +384,7 @@ export default function ReportsView() {
         FOLGA: 'Folga',
         ATESTADO: 'Atestado',
         DECLARACAO: 'Declaração',
+        LICENCA: 'Licença',
         // Abreviar para evitar quebra em PDF
         ESQUECIMENTO_BATIDA: 'E. Batida',
       };
@@ -880,6 +881,7 @@ export default function ReportsView() {
       FOLGA: 'Folga',
       ATESTADO: 'Atestado',
       DECLARACAO: 'Declaração',
+      LICENCA: 'Licença',
       ESQUECIMENTO_BATIDA: 'E. Batida',
     };
     return type ? labels[type] || type : '';
@@ -892,6 +894,7 @@ export default function ReportsView() {
       FOLGA: 'bg-blue-100 text-blue-800 border-blue-300',
       ATESTADO: 'bg-yellow-100 text-yellow-800 border-yellow-300',
       DECLARACAO: 'bg-green-100 text-green-800 border-green-300',
+      LICENCA: 'bg-indigo-100 text-indigo-800 border-indigo-300',
       ESQUECIMENTO_BATIDA: 'bg-orange-100 text-orange-800 border-orange-300',
     };
     return type ? colors[type] || 'bg-gray-100 text-gray-800 border-gray-300' : '';
@@ -1083,8 +1086,8 @@ export default function ReportsView() {
                 <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                   Data
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                  Funcionário
+                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                  Func.
                 </th>
                 {/* Headers dinâmicos: verificar se há turno único nos reports */}
                 {reports.length > 0 && (reports[0].shift_type === 'MORNING_ONLY' || reports[0].shift_type === 'AFTERNOON_ONLY') ? (
@@ -1119,16 +1122,19 @@ export default function ReportsView() {
                       </>
                     )}
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                      ATRASO_CLT
+                      H.TRAB.
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                      H.EXTRA_CLT
+                      ATRASO
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                      SALDO_CLT
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                      EXTRA
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                      Ações
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                      SALDO
+                    </th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                      AÇÕES
                     </th>
               </tr>
             </thead>
@@ -1160,7 +1166,11 @@ export default function ReportsView() {
                           <>
                             {/* Coluna 1: Entrada (1ª batida) */}
                         <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.occurrence_morning_entry && report.occurrence_type ? (
+                              {report.calendar_event_type === 'DSR' ? (
+                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                                  DSR
+                                </span>
+                              ) : report.occurrence_morning_entry && report.occurrence_type ? (
                                 <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
                                   {getOccurrenceTypeLabel(report.occurrence_type)}
                             </span>
@@ -1173,7 +1183,11 @@ export default function ReportsView() {
                         </td>
                             {/* Coluna 2: Saída Intervalo (2ª batida) */}
                         <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.occurrence_lunch_exit && report.occurrence_type ? (
+                              {report.calendar_event_type === 'DSR' ? (
+                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                                  DSR
+                                </span>
+                              ) : report.occurrence_lunch_exit && report.occurrence_type ? (
                                 <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
                                   {getOccurrenceTypeLabel(report.occurrence_type)}
                             </span>
@@ -1186,7 +1200,11 @@ export default function ReportsView() {
                         </td>
                             {/* Coluna 3: Entrada Pós-Intervalo (3ª batida) */}
                         <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.occurrence_afternoon_entry && report.occurrence_type ? (
+                              {report.calendar_event_type === 'DSR' ? (
+                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                                  DSR
+                                </span>
+                              ) : report.occurrence_afternoon_entry && report.occurrence_type ? (
                                 <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
                                   {getOccurrenceTypeLabel(report.occurrence_type)}
                             </span>
@@ -1199,7 +1217,11 @@ export default function ReportsView() {
                         </td>
                             {/* Coluna 4: Saída Final (4ª batida) */}
                         <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.occurrence_final_exit && report.occurrence_type ? (
+                              {report.calendar_event_type === 'DSR' ? (
+                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                                  DSR
+                                </span>
+                              ) : report.occurrence_final_exit && report.occurrence_type ? (
                                 <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
                                   {getOccurrenceTypeLabel(report.occurrence_type)}
                             </span>
@@ -1215,7 +1237,11 @@ export default function ReportsView() {
                       <>
                             {/* Jornada completa: manter mapeamento original */}
                             <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.occurrence_morning_entry && report.occurrence_type ? (
+                              {report.calendar_event_type === 'DSR' ? (
+                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                                  DSR
+                                </span>
+                              ) : report.occurrence_morning_entry && report.occurrence_type ? (
                                 <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
                                   {getOccurrenceTypeLabel(report.occurrence_type)}
                                 </span>
@@ -1227,7 +1253,11 @@ export default function ReportsView() {
                               )}
                             </td>
                             <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.occurrence_lunch_exit && report.occurrence_type ? (
+                              {report.calendar_event_type === 'DSR' ? (
+                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                                  DSR
+                                </span>
+                              ) : report.occurrence_lunch_exit && report.occurrence_type ? (
                                 <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
                                   {getOccurrenceTypeLabel(report.occurrence_type)}
                                 </span>
@@ -1239,7 +1269,11 @@ export default function ReportsView() {
                               )}
                             </td>
                             <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.occurrence_afternoon_entry && report.occurrence_type ? (
+                              {report.calendar_event_type === 'DSR' ? (
+                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                                  DSR
+                                </span>
+                              ) : report.occurrence_afternoon_entry && report.occurrence_type ? (
                                 <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
                                   {getOccurrenceTypeLabel(report.occurrence_type)}
                                 </span>
@@ -1251,7 +1285,11 @@ export default function ReportsView() {
                               )}
                             </td>
                             <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.occurrence_final_exit && report.occurrence_type ? (
+                              {report.calendar_event_type === 'DSR' ? (
+                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                                  DSR
+                                </span>
+                              ) : report.occurrence_final_exit && report.occurrence_type ? (
                                 <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
                                   {getOccurrenceTypeLabel(report.occurrence_type)}
                                 </span>
@@ -1264,6 +1302,15 @@ export default function ReportsView() {
                             </td>
                           </>
                         )}
+                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                      {report.worked_minutes && report.worked_minutes > 0 ? (
+                        <span className="text-neutral-700 font-medium" title="Horas trabalhadas no dia">
+                          {formatMinutes(report.worked_minutes, true)}
+                        </span>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
                             <td className="px-3 py-3 whitespace-nowrap text-xs">
                       {report.atraso_clt_minutes && report.atraso_clt_minutes > 0 ? (
                         <span className="text-red-600 font-medium" title="Atraso CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
@@ -1325,6 +1372,10 @@ export default function ReportsView() {
                             ) : report.occurrence_type === 'DECLARACAO' ? (
                               <span className="inline-block text-indigo-600 cursor-help text-base">
                                 📝
+                              </span>
+                            ) : report.occurrence_type === 'LICENCA' ? (
+                              <span className="inline-block text-indigo-600 cursor-help text-base">
+                                📄
                               </span>
                             ) : null}
                             {/* Tooltip que aparece no hover */}
@@ -1399,6 +1450,9 @@ export default function ReportsView() {
                     <td className="px-3 py-3 text-xs text-neutral-700"></td>
                   </>
                 )}
+                <td className="px-3 py-3 text-xs text-neutral-700 whitespace-nowrap font-semibold">
+                  {formatMinutes(reports.reduce((sum, r) => sum + (r.worked_minutes || 0), 0), true)}
+                </td>
                 <td className="px-3 py-3 text-xs text-red-600 whitespace-nowrap">
                   {formatMinutes(reports.reduce((sum, r) => sum + (r.atraso_clt_minutes || 0), 0))}
                 </td>
@@ -1511,6 +1565,7 @@ export default function ReportsView() {
                   <option value="FOLGA">Folga</option>
                   <option value="ATESTADO">Atestado</option>
                   <option value="DECLARACAO">Declaração</option>
+                  <option value="LICENCA">Licença</option>
                   <option value="ESQUECIMENTO_BATIDA">Esquecimento de Batida</option>
                 </select>
               </div>
