@@ -78,7 +78,27 @@ export default function ScheduleOverrides() {
         `/api/schedule-overrides?employeeId=${employeeId}&startDate=${startDate}&endDate=${endDate}`
       );
       const data = await response.json();
-      setOverrides(data);
+      // Garantir que as datas sejam sempre strings no formato yyyy-MM-dd
+      const normalizedData = data.map((override: ScheduleOverride) => {
+        let dateStr: string;
+        if (override.date instanceof Date) {
+          // Se por algum motivo vier como Date, converter para yyyy-MM-dd
+          const year = override.date.getFullYear();
+          const month = String(override.date.getMonth() + 1).padStart(2, '0');
+          const day = String(override.date.getDate()).padStart(2, '0');
+          dateStr = `${year}-${month}-${day}`;
+        } else if (typeof override.date === 'string') {
+          // Garantir formato yyyy-MM-dd (remover hora se houver)
+          dateStr = override.date.split('T')[0];
+        } else {
+          dateStr = String(override.date).split('T')[0];
+        }
+        return {
+          ...override,
+          date: dateStr,
+        };
+      });
+      setOverrides(normalizedData);
     } catch (error) {
       console.error('Erro ao carregar horários excepcionais:', error);
       setMessage({ type: 'error', text: 'Erro ao carregar horários excepcionais' });
@@ -108,8 +128,27 @@ export default function ScheduleOverrides() {
   };
 
   const handleEdit = (override: ScheduleOverride) => {
-    setFormData(override);
-    setEditingOverride(override);
+    // Normalizar data para garantir formato yyyy-MM-dd
+    let dateStr = override.date;
+    if (override.date instanceof Date) {
+      const year = override.date.getFullYear();
+      const month = String(override.date.getMonth() + 1).padStart(2, '0');
+      const day = String(override.date.getDate()).padStart(2, '0');
+      dateStr = `${year}-${month}-${day}`;
+    } else if (typeof override.date !== 'string') {
+      dateStr = String(override.date).split('T')[0];
+    } else {
+      dateStr = override.date.split('T')[0]; // Garantir formato yyyy-MM-dd
+    }
+    
+    setFormData({
+      ...override,
+      date: dateStr,
+    });
+    setEditingOverride({
+      ...override,
+      date: dateStr,
+    });
     setShowForm(true);
   };
 
@@ -441,7 +480,20 @@ export default function ScheduleOverrides() {
                     </thead>
                     <tbody className="divide-y divide-neutral-200">
                       {overrides.map((override) => {
-                        const dateObj = parseISO(override.date);
+                        // Garantir que a data seja uma string válida antes de fazer parse
+                        let dateStr = override.date;
+                        if (override.date instanceof Date) {
+                          const year = override.date.getFullYear();
+                          const month = String(override.date.getMonth() + 1).padStart(2, '0');
+                          const day = String(override.date.getDate()).padStart(2, '0');
+                          dateStr = `${year}-${month}-${day}`;
+                        } else if (typeof override.date !== 'string') {
+                          dateStr = String(override.date).split('T')[0];
+                        } else {
+                          dateStr = override.date.split('T')[0]; // Garantir formato yyyy-MM-dd
+                        }
+                        
+                        const dateObj = parseISO(dateStr);
                         const formattedDate = format(dateObj, "dd/MM/yyyy (EEEE)", { locale: ptBR });
 
                         let scheduleText = '';

@@ -56,7 +56,31 @@ export async function GET(request: NextRequest) {
     
     const overrides = await query(sql, params);
     
-    return NextResponse.json(overrides);
+    // Normalizar datas para garantir formato yyyy-MM-dd (evitar problemas de timezone)
+    // Postgres pode retornar Date objects que, ao serializar, podem mudar de dia devido a timezone
+    const normalizedOverrides = overrides.map((override: any) => {
+      let dateStr: string;
+      if (override.date instanceof Date) {
+        // Se for Date object, converter para yyyy-MM-dd em UTC para evitar mudança de dia
+        const year = override.date.getUTCFullYear();
+        const month = String(override.date.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(override.date.getUTCDate()).padStart(2, '0');
+        dateStr = `${year}-${month}-${day}`;
+      } else if (typeof override.date === 'string') {
+        // Se já for string, garantir formato yyyy-MM-dd (remover hora se houver)
+        dateStr = override.date.split('T')[0];
+      } else {
+        // Fallback: converter para string e pegar apenas a parte da data
+        dateStr = String(override.date).split('T')[0];
+      }
+      
+      return {
+        ...override,
+        date: dateStr, // Sempre retornar como string yyyy-MM-dd
+      };
+    });
+    
+    return NextResponse.json(normalizedOverrides);
   } catch (error: any) {
     console.error('[GET /api/schedule-overrides] Erro:', error);
     return NextResponse.json(
@@ -82,9 +106,24 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    // Normalizar data para garantir formato yyyy-MM-dd (evitar problemas de timezone)
+    let dateStr: string;
+    if (body.date instanceof Date) {
+      // Se vier como Date object, converter para yyyy-MM-dd em UTC para evitar mudança de dia
+      const year = body.date.getUTCFullYear();
+      const month = String(body.date.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(body.date.getUTCDate()).padStart(2, '0');
+      dateStr = `${year}-${month}-${day}`;
+    } else if (typeof body.date === 'string') {
+      // Garantir formato yyyy-MM-dd (remover hora se houver)
+      dateStr = body.date.split('T')[0];
+    } else {
+      dateStr = String(body.date).split('T')[0];
+    }
+    
     // Validar formato da data (yyyy-MM-dd)
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(body.date)) {
+    if (!dateRegex.test(dateStr)) {
       return NextResponse.json(
         { error: 'Formato de data inválido. Use yyyy-MM-dd' },
         { status: 400 }
@@ -107,7 +146,7 @@ export async function POST(request: NextRequest) {
     // Verificar se já existe override para esta data e funcionário
     const existing = await queryOne(
       `SELECT id FROM schedule_overrides WHERE employee_id = $1 AND date = $2`,
-      [body.employee_id, body.date]
+      [body.employee_id, dateStr]
     );
     
     if (existing) {
@@ -135,7 +174,7 @@ export async function POST(request: NextRequest) {
           body.break_minutes || null,
           body.interval_tolerance_minutes || null,
           body.employee_id,
-          body.date,
+          dateStr,
         ]
       );
       
@@ -155,7 +194,7 @@ export async function POST(request: NextRequest) {
         `,
         [
           body.employee_id,
-          body.date,
+          dateStr,
           body.morning_start || null,
           body.morning_end || null,
           body.afternoon_start || null,
