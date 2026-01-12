@@ -103,7 +103,7 @@ BEGIN
     ) THEN
         ALTER TABLE processed_records 
         ADD COLUMN occurrence_type TEXT 
-        CHECK (occurrence_type IN ('FERIADO', 'FALTA', 'FOLGA', 'ATESTADO', 'DECLARACAO', 'LICENCA', 'ESQUECIMENTO_BATIDA'));
+        CHECK (occurrence_type IN ('FERIADO', 'FALTA', 'FOLGA', 'ATESTADO', 'DECLARACAO', 'LICENCA', 'FERIAS', 'ESQUECIMENTO_BATIDA'));
     END IF;
 END $$;
 

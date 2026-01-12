@@ -42,7 +42,7 @@ interface Report {
   saida_antec_clt_minutes?: number; // Saída antecipada CLT (após tolerância)
   saldo_clt_minutes?: number; // SALDO_CLT (para fins de pagamento/banco de horas legal)
   status: 'OK' | 'INCONSISTENTE';
-  occurrence_type?: 'FERIADO' | 'FALTA' | 'FOLGA' | 'ATESTADO' | 'DECLARACAO' | 'ESQUECIMENTO_BATIDA' | 'LICENCA' | null;
+  occurrence_type?: 'FERIADO' | 'FALTA' | 'FOLGA' | 'ATESTADO' | 'DECLARACAO' | 'ESQUECIMENTO_BATIDA' | 'LICENCA' | 'FERIAS' | null;
   occurrence_morning_entry?: boolean;
   occurrence_lunch_exit?: boolean;
   occurrence_afternoon_entry?: boolean;
@@ -385,6 +385,7 @@ export default function ReportsView() {
         ATESTADO: 'Atestado',
         DECLARACAO: 'Declaração',
         LICENCA: 'Licença',
+        FERIAS: 'Férias',
         // Abreviar para evitar quebra em PDF
         ESQUECIMENTO_BATIDA: 'E. Batida',
       };
@@ -895,6 +896,7 @@ export default function ReportsView() {
       ATESTADO: 'bg-yellow-100 text-yellow-800 border-yellow-300',
       DECLARACAO: 'bg-green-100 text-green-800 border-green-300',
       LICENCA: 'bg-indigo-100 text-indigo-800 border-indigo-300',
+      FERIAS: 'bg-teal-100 text-teal-800 border-teal-300',
       ESQUECIMENTO_BATIDA: 'bg-orange-100 text-orange-800 border-orange-300',
     };
     return type ? colors[type] || 'bg-gray-100 text-gray-800 border-gray-300' : '';
@@ -1377,6 +1379,10 @@ export default function ReportsView() {
                               <span className="inline-block text-indigo-600 cursor-help text-base">
                                 📄
                               </span>
+                            ) : report.occurrence_type === 'FERIAS' ? (
+                              <span className="inline-block text-teal-600 cursor-help text-base">
+                                🏖️
+                              </span>
                             ) : null}
                             {/* Tooltip que aparece no hover */}
                             <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none">
@@ -1566,6 +1572,7 @@ export default function ReportsView() {
                   <option value="ATESTADO">Atestado</option>
                   <option value="DECLARACAO">Declaração</option>
                   <option value="LICENCA">Licença</option>
+                  <option value="FERIAS">Férias</option>
                   <option value="ESQUECIMENTO_BATIDA">Esquecimento de Batida</option>
                 </select>
               </div>
