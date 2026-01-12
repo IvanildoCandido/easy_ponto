@@ -106,20 +106,8 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Normalizar data para garantir formato yyyy-MM-dd (evitar problemas de timezone)
-    let dateStr: string;
-    if (body.date instanceof Date) {
-      // Se vier como Date object, converter para yyyy-MM-dd em UTC para evitar mudança de dia
-      const year = body.date.getUTCFullYear();
-      const month = String(body.date.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(body.date.getUTCDate()).padStart(2, '0');
-      dateStr = `${year}-${month}-${day}`;
-    } else if (typeof body.date === 'string') {
-      // Garantir formato yyyy-MM-dd (remover hora se houver)
-      dateStr = body.date.split('T')[0];
-    } else {
-      dateStr = String(body.date).split('T')[0];
-    }
+    // Normalizar data para garantir formato yyyy-MM-dd (remover hora se houver)
+    const dateStr = body.date.split('T')[0];
     
     // Validar formato da data (yyyy-MM-dd)
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;

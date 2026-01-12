@@ -36,3 +36,4 @@ COMMENT ON COLUMN employees.compensation_type IS 'Tipo de compensação: BANCO_D
 
 
 
+
