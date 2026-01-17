@@ -32,10 +32,10 @@ export default function LoginPage() {
           // Ignorar erros ao limpar
         }
 
-        const session = await getSession();
-        if (session) {
-          router.push('/');
-        }
+      const session = await getSession();
+      if (session) {
+        router.push('/');
+      }
       } catch (error) {
         console.error('Erro ao verificar sessão na página de login:', error);
         // Em caso de erro, limpar localStorage e permitir login

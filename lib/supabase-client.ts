@@ -79,9 +79,9 @@ export async function getSession() {
       console.error('Erro ao obter sessão:', error);
       // Se houver erro de token inválido, limpar localStorage
       if (error.message?.includes('token') || error.message?.includes('expired')) {
-        try {
-          localStorage.removeItem('easy-ponto-auth');
-        } catch (e) {
+      try {
+        localStorage.removeItem('easy-ponto-auth');
+      } catch (e) {
           // Ignorar erro ao limpar
         }
       }
@@ -96,9 +96,9 @@ export async function getSession() {
   } catch (error) {
     console.error('Erro ao obter sessão:', error);
     // Em caso de erro grave, tentar limpar localStorage
-    try {
-      localStorage.removeItem('easy-ponto-auth');
-    } catch (e) {
+      try {
+        localStorage.removeItem('easy-ponto-auth');
+      } catch (e) {
       // Ignorar erro ao limpar
     }
     return null;
@@ -107,7 +107,7 @@ export async function getSession() {
 
 // Helper para fazer logout
 export async function signOut() {
-  const client = getSupabaseClient();
+    const client = getSupabaseClient();
   await client.auth.signOut();
 }
 
@@ -160,6 +160,6 @@ export async function getCurrentUser() {
     return user;
   } catch (error) {
     console.error('Erro ao obter usuário:', error);
-    return null;
+      return null;
   }
 }

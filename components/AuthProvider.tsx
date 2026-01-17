@@ -24,10 +24,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   const handleSignOut = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.error('Erro ao fazer logout:', error);
+      try {
+        await supabase.auth.signOut();
+      } catch (error) {
+        console.error('Erro ao fazer logout:', error);
     }
     setUser(null);
     router.push('/login');
@@ -40,8 +40,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Se já estiver na página de login, não bloquear renderização
     if (pathname === '/login') {
-      setLoading(false);
-    }
+        setLoading(false);
+      }
 
     // Verificar sessão inicial com timeout de segurança
     const checkSession = async () => {
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else if (mounted) {
             setUser(null);
             setLoading(false);
-          }
+            }
         } else {
           setUser(null);
           setLoading(false);
@@ -85,8 +85,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (mounted) {
           setUser(null);
           setLoading(false);
-          if (pathname !== '/login') {
-            router.push('/login');
+        if (pathname !== '/login') {
+          router.push('/login');
           }
         }
       } finally {
@@ -95,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         if (mounted && pathname === '/login') {
           // Garantir que sempre desativa loading na página de login
-          setLoading(false);
+        setLoading(false);
         }
       }
     };
@@ -103,38 +103,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkSession();
 
     // Ouvir mudanças na autenticação
-    try {
-      const {
-        data: { subscription: authSubscription },
-      } = supabase.auth.onAuthStateChange(async (event, session) => {
+      try {
+        const {
+          data: { subscription: authSubscription },
+        } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (!mounted) return;
 
-        if (event === 'SIGNED_OUT' || !session) {
-          setUser(null);
-          setLoading(false);
-          if (pathname !== '/login') {
-            router.push('/login');
-          }
+          if (event === 'SIGNED_OUT' || !session) {
+            setUser(null);
+            setLoading(false);
+            if (pathname !== '/login') {
+              router.push('/login');
+            }
         } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          const currentUser = await getCurrentUser();
-          if (currentUser) {
-            setUser(currentUser);
+                const currentUser = await getCurrentUser();
+                if (currentUser) {
+                  setUser(currentUser);
           }
           setLoading(false);
         }
-      });
-      subscription = authSubscription;
-    } catch (error) {
-      console.error('Erro ao configurar listener de autenticação:', error);
+        });
+        subscription = authSubscription;
+      } catch (error) {
+        console.error('Erro ao configurar listener de autenticação:', error);
       if (mounted) {
         setLoading(false);
+        }
       }
-    }
 
     return () => {
       mounted = false;
       if (timeoutId) {
-        clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
       }
       if (subscription) {
         subscription.unsubscribe();

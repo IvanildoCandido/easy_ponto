@@ -167,9 +167,9 @@ export default function ReportsView() {
       const date = new Date(time);
       if (!isNaN(date.getTime())) {
         return date.toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
+      hour: '2-digit',
+      minute: '2-digit',
+    });
       }
     } catch (e) {
       // Ignorar erro
