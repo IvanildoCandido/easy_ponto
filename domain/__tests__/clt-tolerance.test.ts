@@ -57,13 +57,12 @@ describe('Cálculo CLT - Casos Reais do Sistema', () => {
 
       const summary = computeDaySummaryV2(punches, schedule, workDate);
       
-      // Jornada cumprida: worked 484min, expected 480 → saldo +4. Excesso de intervalo não afeta CLT (intervalo flexível).
-      // Deltas: entrada -4 (tolerado), saída +30 → excedente 25min extra
+      // Jornada cumprida: worked 484min, expected 480 → saldo +4. Com 4 batidas, extra = saldo (trabalhado − previsto).
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(25);
+      expect(summary.extraCltMinutes).toBe(4);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(25);
+      expect(summary.saldoCltMinutes).toBe(4);
     });
   });
 
@@ -85,13 +84,12 @@ describe('Cálculo CLT - Casos Reais do Sistema', () => {
 
       const summary = computeDaySummaryV2(punches, schedule, workDate);
       
-      // Jornada cumprida: worked 482min, expected 480 → saldo +2. Excesso de intervalo não afeta CLT (intervalo flexível).
-      // Deltas: entrada -5 (tolerado), saída +60 → excedente 55min extra
+      // Jornada cumprida: worked 482min, expected 480 → saldo +2. Com 4 batidas, extra = saldo (trabalhado − previsto).
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(55);
+      expect(summary.extraCltMinutes).toBe(2);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(55);
+      expect(summary.saldoCltMinutes).toBe(2);
     });
   });
 
@@ -113,13 +111,12 @@ describe('Cálculo CLT - Casos Reais do Sistema', () => {
 
       const summary = computeDaySummaryV2(punches, schedule, workDate);
       
-      // Jornada cumprida (worked 616, expected 600 → saldo +16). Excesso de intervalo não desconta do extra.
-      // Deltas: entrada -2 (tolerado), saída +16 → excedente 11min extra
+      // Jornada cumprida (worked 616, expected 600 → saldo +16). Com 4 batidas, extra = saldo (trabalhado − previsto).
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(11);
+      expect(summary.extraCltMinutes).toBe(16);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(11);
+      expect(summary.saldoCltMinutes).toBe(16);
     });
   });
 
@@ -201,15 +198,12 @@ describe('Cálculo CLT - Casos Reais do Sistema', () => {
 
       const summary = computeDaySummaryV2(punches, schedule, workDate);
       
-      // Deltas: entrada -5, saída +19
-      // Tolerância: 5 (entrada) + 5 (saída) = 10 (limite)
-      // CHEGADA_ANTEC_CLT = 0 (5 min tolerados)
-      // EXTRA_CLT = 19 - 5 = 14
+      // Worked 626min (06:55-12:00 + 12:58-18:19), expected 600 → saldo +26. Com 4 batidas, extra = saldo.
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(14);
+      expect(summary.extraCltMinutes).toBe(26);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(14); // 14 - 0 = 14
+      expect(summary.saldoCltMinutes).toBe(26);
     });
   });
 
@@ -231,15 +225,12 @@ describe('Cálculo CLT - Casos Reais do Sistema', () => {
 
       const summary = computeDaySummaryV2(punches, schedule, workDate);
       
-      // Deltas: entrada -2, saída +14
-      // Tolerância: 2 (entrada) + 5 (saída) = 7 (≤10)
-      // CHEGADA_ANTEC_CLT = 0 (2 min tolerados)
-      // EXTRA_CLT = 14 - 5 = 9
+      // Worked 620min (06:58-13:02 + 13:58-18:14), expected 600 → saldo +20. Com 4 batidas, extra = saldo.
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(9);
+      expect(summary.extraCltMinutes).toBe(20);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(9); // 9 - 0 = 9
+      expect(summary.saldoCltMinutes).toBe(20);
     });
   });
 
@@ -447,11 +438,9 @@ describe('Cálculo CLT - Casos Reais do Sistema', () => {
 
       const summary = computeDaySummaryV2(punches, schedule, workDate);
       
-      // Tolerância: 3 + 5 = 8 (não excede)
-      // ATRASO_CLT = 3 - 3 = 0
-      // EXTRA_CLT = 8 - 5 = 3
+      // Worked 485min (08:03-12:00 + 14:00-18:08), expected 480 → saldo +5. Com 4 batidas, extra = saldo.
       expect(summary.atrasoCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(3);
+      expect(summary.extraCltMinutes).toBe(5);
     });
 
     test('Excedente: toleratedStart < toleratedEnd mas toleratedEnd < excess (cobre branch)', () => {
