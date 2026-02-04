@@ -308,12 +308,17 @@ export function computeStartEndDeltas(
         time: punches.finalExit,
         scheduled: schedule.afternoonEnd,
       };
-    } else if (punches.lunchExit && schedule.morningEnd && !schedule.afternoonStart) {
-      // Se não trabalha de tarde, saída almoço é a última saída
-      lastExit = {
-        time: punches.lunchExit,
-        scheduled: schedule.morningEnd,
-      };
+    } else if (schedule.morningEnd && !schedule.afternoonStart) {
+      // Escala só manhã: usar finalExit se existir (funcionário trabalhou tarde também),
+      // senão usar lunchExit. Se só usar lunchExit quando tem 4 batidas, ignora todo
+      // o período tarde (ex: 3h17min extras não contadas)
+      const exitTime = punches.finalExit || punches.lunchExit;
+      if (exitTime) {
+        lastExit = {
+          time: exitTime,
+          scheduled: schedule.morningEnd,
+        };
+      }
     }
   }
   

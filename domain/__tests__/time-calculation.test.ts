@@ -144,6 +144,74 @@ describe('Cálculo de Ponto - Jornadas Parciais e Edge Cases', () => {
       expect(summary.intervalExcessSeconds).toBe(0);
       expect(summary.intervalExcessMinutes).toBe(0);
     });
+
+    // Consistência: dois dias (15/01 e 22/01) com mesma escala Quinta; excesso de intervalo
+    // deve ser tratado igual: descontar de extra/chegada antecipada e o restante vira atraso
+    test('excesso de intervalo: sem extra → todo excesso vira atraso (ex.: 15/01)', () => {
+      const schedule: ScheduledTimes = {
+        morningStart: '08:00',
+        morningEnd: '12:00',
+        afternoonStart: '13:00',
+        afternoonEnd: '18:00',
+      };
+      const punches = {
+        morningEntry: '2026-01-15 07:56:06',
+        lunchExit: '2026-01-15 12:58:56',
+        afternoonEntry: '2026-01-15 15:00:25',
+        finalExit: '2026-01-15 17:55:43',
+      };
+      const summary = computeDaySummaryV2(punches, schedule, '2026-01-15', undefined, 0, 'BANCO_DE_HORAS');
+      expect(summary.intervalExcessMinutes).toBe(62);
+      expect(summary.extraCltMinutes).toBe(0);
+      expect(summary.atrasoCltMinutes).toBe(62);
+      expect(summary.saldoCltMinutes).toBe(-62);
+    });
+
+    test('excesso de intervalo: com extra parcial → só desconta quando jornada NÃO cumprida (ex.: 22/01, saldo negativo)', () => {
+      const schedule: ScheduledTimes = {
+        morningStart: '08:00',
+        morningEnd: '12:00',
+        afternoonStart: '13:00',
+        afternoonEnd: '18:00',
+      };
+      const punches = {
+        morningEntry: '2026-01-22 07:55:04',
+        lunchExit: '2026-01-22 11:59:51',
+        afternoonEntry: '2026-01-22 14:00:31',
+        finalExit: '2026-01-22 18:14:01',
+      };
+      const summary = computeDaySummaryV2(punches, schedule, '2026-01-22', undefined, 0, 'BANCO_DE_HORAS');
+      expect(summary.intervalExcessMinutes).toBe(61);
+      // worked 498 < expected 540 → saldo negativo: excesso afeta CLT. 9min extra descontados, 52min → atraso
+      expect(summary.extraCltMinutes).toBe(0);
+      expect(summary.atrasoCltMinutes).toBe(52);
+      expect(summary.saldoCltMinutes).toBe(-52);
+    });
+
+    test('excesso de intervalo NÃO afeta atraso/extra quando jornada cumprida (intervalo flexível)', () => {
+      const schedule: ScheduledTimes = {
+        morningStart: '08:00',
+        morningEnd: '12:00',
+        afternoonStart: '13:00',
+        afternoonEnd: '18:00',
+      };
+      // Almoço longo (12:00-15:00 = 3h), saída 20:00 → trabalhou 4h+5h = 9h, cumpriu jornada (expected 9h). Saldo 0.
+      const punches = {
+        morningEntry: '2026-01-22 08:00:00',
+        lunchExit: '2026-01-22 12:00:00',
+        afternoonEntry: '2026-01-22 15:00:00',
+        finalExit: '2026-01-22 20:00:00',
+      };
+      const summary = computeDaySummaryV2(punches, schedule, '2026-01-22', undefined, 0, 'BANCO_DE_HORAS');
+      expect(summary.intervalExcessMinutes).toBe(120);
+      expect(summary.workedMinutes).toBe(540);
+      expect(summary.expectedMinutes).toBe(540);
+      expect(summary.balanceMinutes).toBe(0);
+      // Excesso não desconta (intervalo flexível): extra = 120-5 = 115, atraso 0
+      expect(summary.atrasoCltMinutes).toBe(0);
+      expect(summary.extraCltMinutes).toBe(115);
+      expect(summary.saldoCltMinutes).toBe(115);
+    });
   });
 
   describe('Cálculo em Segundos (Precisão)', () => {
@@ -382,6 +450,32 @@ describe('Cálculo de Ponto - Jornadas Parciais e Edge Cases', () => {
       // Se houver erro no parse, deve retornar 0
       expect(summary.intervalExcessSeconds).toBeGreaterThanOrEqual(0);
       expect(summary.intervalExcessMinutes).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe('Turno único manhã com 4 batidas - extra por saldo (trabalhado − previsto)', () => {
+    test('Previsto 5h, trabalhado 8h32 → extra 3h32 (212 min), não 5h13', () => {
+      // Segunda: escala 5h (ex.: 08:00–13:00 sem intervalo descontado = 300 min)
+      const schedule: ScheduledTimes = {
+        morningStart: '08:00',
+        morningEnd: '12:00',
+        afternoonStart: null,
+        afternoonEnd: '13:00', // fim do “dia” para turno único 5h
+      };
+      const singleShiftInfo = { shiftType: 'MORNING_ONLY' as const, breakMinutes: 0 };
+      const punches: PunchTimes = {
+        morningEntry: '2026-01-05 07:57:00',
+        lunchExit: '2026-01-05 13:12:00',
+        afternoonEntry: '2026-01-05 15:01:00',
+        finalExit: '2026-01-05 18:18:00',
+      };
+      const summary = computeDaySummaryV2(punches, schedule, '2026-01-05', singleShiftInfo);
+      expect(summary.expectedMinutes).toBe(300); // 5h
+      expect(summary.workedMinutes).toBe(512);   // 8h32
+      expect(summary.balanceMinutes).toBe(212);
+      // Extra = trabalhado − previsto = 212 min (3h32), não “saída − 13:00” (313 min)
+      expect(summary.extraCltMinutes).toBe(212);
+      expect(summary.saldoCltMinutes).toBe(212);
     });
   });
 

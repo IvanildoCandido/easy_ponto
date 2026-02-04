@@ -320,12 +320,18 @@ function calculateIndicators(
       time: punches.finalExit,
       scheduled: schedule.afternoonEnd,
     };
-  } else if (punches.lunchExit && schedule.morningEnd && !schedule.afternoonStart) {
-    // Se não trabalha de tarde, saída almoço é a última saída
-    lastExit = {
-      time: punches.lunchExit,
-      scheduled: schedule.morningEnd,
-    };
+  } else if (schedule.morningEnd && !schedule.afternoonStart) {
+    // Escala só manhã: usar finalExit se existir (funcionário trabalhou tarde também),
+    // senão usar lunchExit (funcionário parou no horário previsto)
+    // IMPORTANTE: Se tem 4 batidas e trabalhou tarde, a "última saída" real é 18:18,
+    // não 13:12 - senão ignora todo o período tarde (ex: 3h17min extras não contadas)
+    const exitTime = punches.finalExit || punches.lunchExit;
+    if (exitTime) {
+      lastExit = {
+        time: exitTime,
+        scheduled: schedule.morningEnd,
+      };
+    }
   }
 
   // Calcular delta da primeira entrada (início da jornada)
@@ -572,6 +578,16 @@ export function computeDaySummaryV2(
     let chegadaAntecBrutoMinutes = cltValues.chegadaAntecBrutoMinutes;
     let atrasoBrutoMinutes = cltValues.atrasoBrutoMinutes;
     let saidaAntecBrutoMinutes = cltValues.saidaAntecBrutoMinutes;
+
+    // QUANDO HÁ 4 BATIDAS E SALDO POSITIVO: extra = trabalhado − previsto (não "saída − horário previsto de saída").
+    // Assim funciona tanto para turno único (MORNING_ONLY) quanto para escala FULL_DAY com 5h (ex.: 08–12 + 12–13).
+    // Caso contrário, com fim previsto 13:00 e saída 18:18, o sistema geraria "5h13 extra" em vez de 3h32.
+    const quatroBatidas = punches.morningEntry && punches.lunchExit && punches.afternoonEntry && punches.finalExit;
+    if (quatroBatidas && balanceMinutes > 0) {
+      extraBrutoMinutes = balanceMinutes;
+      saidaAntecBrutoMinutes = 0; // não há "saída antecipada" quando o saldo é positivo
+      logs.push(`[4 BATIDAS] Extra por saldo: ${extraBrutoMinutes}min (trabalhado ${workedMinutes}min − previsto ${expectedMinutes}min)`);
+    }
     
     logs.push(`=== CÁLCULO CLT - Art. 58 §1º ===`);
     logs.push(`Delta inicial: entrada=${deltaStart}min, saída=${deltaEnd}min`);
@@ -580,36 +596,44 @@ export function computeDaySummaryV2(
     logs.push(`[REGRA 5min] Saída: diferença ${deltaEnd}min → ${Math.abs(deltaEnd) <= 5 ? 'tolerado (zera)' : `não tolerado (considera ${deltaEnd}min)`}`);
     logs.push(`Saldo bruto após regra dos 5min: ${cltValues.saldoBrutoDia}min`);
     
-    // IMPORTANTE: O excesso de intervalo DEVE ser descontado das horas extras CLT
-    // Conforme jurisprudência, se o funcionário excedeu o intervalo previsto, esse tempo
-    // deve ser descontado das horas extras trabalhadas
-    if (intervalExcess.intervalExcessMinutes > 0) {
-      logs.push(`⚠️ Excesso de intervalo detectado: ${intervalExcess.intervalExcessMinutes}min (será descontado das horas extras)`);
+    // REGRA: Só considerar excesso de intervalo para desconto CLT quando o funcionário NÃO cumpriu a jornada (saldo negativo).
+    // Se cumpriu ou fez mais horas, pode ter usado o intervalo de forma flexível (ex.: 2h de almoço em outro momento);
+    // nesse caso o "excesso" de intervalo não vira atraso nem desconta de hora extra.
+    const considerarExcessoParaClt = intervalExcess.intervalExcessMinutes > 0 && balanceMinutes < 0;
+    if (considerarExcessoParaClt) {
+      logs.push(`⚠️ Excesso de intervalo: ${intervalExcess.intervalExcessMinutes}min (jornada não cumprida: saldo ${balanceMinutes}min) → será descontado das horas extras / atraso`);
       
       // Descontar excesso de intervalo das horas extras (prioridade: extraBruto > chegadaAntec)
       const extraBrutoOriginal = extraBrutoMinutes;
       if (extraBrutoMinutes >= intervalExcess.intervalExcessMinutes) {
-        // Se há hora extra suficiente, desconta tudo dela
         extraBrutoMinutes = extraBrutoMinutes - intervalExcess.intervalExcessMinutes;
         logs.push(`  Descontado ${intervalExcess.intervalExcessMinutes}min do EXTRA_CLT (${extraBrutoOriginal}min - ${intervalExcess.intervalExcessMinutes}min = ${extraBrutoMinutes}min)`);
       } else if (extraBrutoMinutes > 0) {
-        // Se há hora extra parcial, desconta o que pode e o restante da chegada antecipada
-        const restanteExcesso = intervalExcess.intervalExcessMinutes - extraBrutoMinutes;
-        logs.push(`  Descontado ${extraBrutoMinutes}min do EXTRA_CLT e ${restanteExcesso}min da CHEGADA_ANTEC_CLT`);
-        chegadaAntecBrutoMinutes = Math.max(0, chegadaAntecBrutoMinutes - restanteExcesso);
+        const restanteAposExtra = intervalExcess.intervalExcessMinutes - extraBrutoMinutes;
+        const chegadaAntecOriginal = chegadaAntecBrutoMinutes;
+        logs.push(`  Descontado ${extraBrutoMinutes}min do EXTRA_CLT; restante ${restanteAposExtra}min a descontar da CHEGADA_ANTEC ou ATRASO`);
         extraBrutoMinutes = 0;
+        if (chegadaAntecBrutoMinutes >= restanteAposExtra) {
+          chegadaAntecBrutoMinutes = chegadaAntecBrutoMinutes - restanteAposExtra;
+          logs.push(`  Descontado ${restanteAposExtra}min da CHEGADA_ANTEC_CLT`);
+        } else {
+          const restanteAposChegada = restanteAposExtra - chegadaAntecBrutoMinutes;
+          atrasoBrutoMinutes = atrasoBrutoMinutes + restanteAposChegada;
+          chegadaAntecBrutoMinutes = 0;
+          logs.push(`  Descontado ${chegadaAntecOriginal > 0 ? chegadaAntecOriginal + 'min da CHEGADA_ANTEC_CLT e ' : ''}${restanteAposChegada}min adicionado ao ATRASO_CLT`);
+        }
       } else if (chegadaAntecBrutoMinutes >= intervalExcess.intervalExcessMinutes) {
-        // Se não há hora extra, desconta da chegada antecipada
         chegadaAntecBrutoMinutes = chegadaAntecBrutoMinutes - intervalExcess.intervalExcessMinutes;
         logs.push(`  Descontado ${intervalExcess.intervalExcessMinutes}min da CHEGADA_ANTEC_CLT`);
       } else {
-        // Se não há horas extras nem chegada antecipada suficiente, vira atraso
         const chegadaAntecOriginal = chegadaAntecBrutoMinutes;
         const restanteExcesso = intervalExcess.intervalExcessMinutes - chegadaAntecBrutoMinutes;
         atrasoBrutoMinutes = atrasoBrutoMinutes + restanteExcesso;
         chegadaAntecBrutoMinutes = 0;
         logs.push(`  Descontado ${chegadaAntecOriginal > 0 ? chegadaAntecOriginal + 'min da CHEGADA_ANTEC_CLT e ' : ''}${restanteExcesso}min adicionado ao ATRASO_CLT`);
       }
+    } else if (intervalExcess.intervalExcessMinutes > 0 && balanceMinutes >= 0) {
+      logs.push(`ℹ️ Excesso de intervalo: ${intervalExcess.intervalExcessMinutes}min (jornada cumprida ou excedida: saldo ${balanceMinutes}min) → não afeta atraso/extra (intervalo flexível)`);
     }
     
     // Calcular saldo bruto após desconto de excesso de intervalo

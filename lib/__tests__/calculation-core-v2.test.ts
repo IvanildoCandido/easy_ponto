@@ -343,16 +343,12 @@ describe('Cálculo de Ponto V2 - Saldo = HorasTrabalhadas - HorasPrevistas', () 
       expect(summary.overtimeMinutes).toBe(60);
       expect(summary.earlyExitMinutes).toBe(0);
       
-      // Valores CLT
-      // delta_start = -5, delta_end = +60
-      // tolerated_start = 5, tolerated_end = 5
-      // tolerated_sum = 10 (limite do teto)
-      // Com teto de 10min, todos os valores CLT são zerados
+      // Jornada cumprida (worked 482, expected 480 → saldo +2). Com 4 batidas, extra = saldo (trabalhado − previsto).
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(0);
+      expect(summary.extraCltMinutes).toBe(2);  // extra por saldo, não por delta de saída
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(0);
+      expect(summary.saldoCltMinutes).toBe(2);
     });
   });
 
@@ -379,17 +375,12 @@ describe('Cálculo de Ponto V2 - Saldo = HorasTrabalhadas - HorasPrevistas', () 
       expect(summary.expectedMinutes).toBe(480);
       expect(summary.balanceMinutes).toBe(2); // +2 min
       
-      // Valores CLT
-      // delta_start = 07:55 - 08:00 = -5
-      // delta_end = 18:00 - 17:00 = +60
-      // tolerated_start = 5, tolerated_end = 5
-      // tolerated_sum = 10 (limite do teto)
-      // Com teto de 10min, todos os valores CLT são zerados
+      // Com 4 batidas, extra = saldo (trabalhado − previsto) = 2 min.
       expect(summary.atrasoCltMinutes).toBe(0);
-      expect(summary.chegadaAntecCltMinutes).toBe(0); // 5 min tolerados
-      expect(summary.extraCltMinutes).toBe(0); // Zerado pelo teto de 10min
+      expect(summary.chegadaAntecCltMinutes).toBe(0);
+      expect(summary.extraCltMinutes).toBe(2);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(0);
+      expect(summary.saldoCltMinutes).toBe(2);
     });
 
     test('Caso Dayana: tolerância aplicada corretamente (08-12/14-18, batidas 08:13/12:11/14:11/17:56)', () => {

@@ -57,14 +57,13 @@ describe('Cálculo CLT - Casos Reais do Sistema', () => {
 
       const summary = computeDaySummaryV2(punches, schedule, workDate);
       
-      // Deltas: entrada -4, saída +30
-      // Tolerância: 4 (entrada) + 5 (saída) = 9 (≤10) - dentro do teto de 10min
-      // Com teto de 10min, todos os valores CLT são zerados
+      // Jornada cumprida: worked 484min, expected 480 → saldo +4. Excesso de intervalo não afeta CLT (intervalo flexível).
+      // Deltas: entrada -4 (tolerado), saída +30 → excedente 25min extra
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(0);
+      expect(summary.extraCltMinutes).toBe(25);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(0);
+      expect(summary.saldoCltMinutes).toBe(25);
     });
   });
 
@@ -86,14 +85,13 @@ describe('Cálculo CLT - Casos Reais do Sistema', () => {
 
       const summary = computeDaySummaryV2(punches, schedule, workDate);
       
-      // Deltas: entrada -5, saída +60
-      // Tolerância: 5 (entrada) + 5 (saída) = 10 (limite)
-      // Com teto de 10min, todos os valores CLT são zerados
+      // Jornada cumprida: worked 482min, expected 480 → saldo +2. Excesso de intervalo não afeta CLT (intervalo flexível).
+      // Deltas: entrada -5 (tolerado), saída +60 → excedente 55min extra
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(0);
+      expect(summary.extraCltMinutes).toBe(55);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(0);
+      expect(summary.saldoCltMinutes).toBe(55);
     });
   });
 
@@ -115,17 +113,13 @@ describe('Cálculo CLT - Casos Reais do Sistema', () => {
 
       const summary = computeDaySummaryV2(punches, schedule, workDate);
       
-      // Deltas: entrada -2, saída +16
-      // Tolerância: 2 (entrada) + 5 (saída) = 7 (≤10)
-      // CHEGADA_ANTEC_CLT = 0 (2 min tolerados)
-      // EXTRA_CLT bruto = 16 - 5 = 11 (excedente após tolerância)
-      // Excesso de intervalo: 13:00 - 11:58 = 62min, previsto 13:00 - 12:00 = 60min, excesso = 2min
-      // Após desconto: 11 - 2 = 9min
+      // Jornada cumprida (worked 616, expected 600 → saldo +16). Excesso de intervalo não desconta do extra.
+      // Deltas: entrada -2 (tolerado), saída +16 → excedente 11min extra
       expect(summary.atrasoCltMinutes).toBe(0);
       expect(summary.chegadaAntecCltMinutes).toBe(0);
-      expect(summary.extraCltMinutes).toBe(9);
+      expect(summary.extraCltMinutes).toBe(11);
       expect(summary.saidaAntecCltMinutes).toBe(0);
-      expect(summary.saldoCltMinutes).toBe(9); // 9 - 0 = 9
+      expect(summary.saldoCltMinutes).toBe(11);
     });
   });
 

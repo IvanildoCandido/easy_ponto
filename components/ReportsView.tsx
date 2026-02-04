@@ -1126,13 +1126,16 @@ export default function ReportsView() {
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
                       H.TRAB.
                     </th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap" title="Jornada prevista do dia (mesma base para todos os dias da mesma semana)">
+                      PREV.
+                    </th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
                       ATRASO
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
                       EXTRA
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap" title="Saldo CLT (após tolerância 5min e regras de excesso de intervalo). Para saldo gerencial use: H.TRAB. − PREV.">
                       SALDO
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
@@ -1313,6 +1316,13 @@ export default function ReportsView() {
                         '-'
                       )}
                     </td>
+                            <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-600" title="Jornada prevista (mesma para todos os dias da mesma semana)">
+                      {report.expected_minutes != null && report.expected_minutes > 0 ? (
+                        formatMinutes(report.expected_minutes, true)
+                      ) : (
+                        '-'
+                      )}
+                    </td>
                             <td className="px-3 py-3 whitespace-nowrap text-xs">
                       {report.atraso_clt_minutes && report.atraso_clt_minutes > 0 ? (
                         <span className="text-red-600 font-medium" title="Atraso CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
@@ -1458,6 +1468,9 @@ export default function ReportsView() {
                 )}
                 <td className="px-3 py-3 text-xs text-neutral-700 whitespace-nowrap font-semibold">
                   {formatMinutes(reports.reduce((sum, r) => sum + (r.worked_minutes || 0), 0), true)}
+                </td>
+                <td className="px-3 py-3 text-xs text-neutral-600 whitespace-nowrap" title="Soma das jornadas previstas do período">
+                  {formatMinutes(reports.reduce((sum, r) => sum + (r.expected_minutes || 0), 0), true)}
                 </td>
                 <td className="px-3 py-3 text-xs text-red-600 whitespace-nowrap">
                   {formatMinutes(reports.reduce((sum, r) => sum + (r.atraso_clt_minutes || 0), 0))}
