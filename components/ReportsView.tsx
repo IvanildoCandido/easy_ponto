@@ -63,7 +63,7 @@ export default function ReportsView() {
   const today = new Date();
   const firstDayOfMonth = format(startOfMonth(today), 'yyyy-MM-dd');
   const lastDayOfMonth = format(endOfMonth(today), 'yyyy-MM-dd');
-  
+
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<number | ''>('');
   const [startDate, setStartDate] = useState(firstDayOfMonth);
@@ -77,7 +77,7 @@ export default function ReportsView() {
   const [editingOccurrenceAfternoonEntry, setEditingOccurrenceAfternoonEntry] = useState<boolean>(false);
   const [editingOccurrenceFinalExit, setEditingOccurrenceFinalExit] = useState<boolean>(false);
   const [isSavingOccurrence, setIsSavingOccurrence] = useState(false);
-  
+
   // Estados para correção manual de batidas
   const [editingManualPunch, setEditingManualPunch] = useState<number | null>(null); // ID do registro sendo editado
   const [isSavingManualPunch, setIsSavingManualPunch] = useState(false);
@@ -86,7 +86,7 @@ export default function ReportsView() {
   const [editingManualAfternoonEntry, setEditingManualAfternoonEntry] = useState<string>('');
   const [editingManualFinalExit, setEditingManualFinalExit] = useState<string>('');
   const [editingManualReason, setEditingManualReason] = useState<string>('');
-  
+
   // Estados para batidas originais do relógio
   const [originalMorningEntry, setOriginalMorningEntry] = useState<string>('');
   const [originalLunchExit, setOriginalLunchExit] = useState<string>('');
@@ -109,7 +109,7 @@ export default function ReportsView() {
       setReports([]);
       return;
     }
-    
+
     setLoading(true);
     try {
       const url = `/api/reports?startDate=${startDate}&endDate=${endDate}&employeeId=${selectedEmployee}`;
@@ -150,37 +150,37 @@ export default function ReportsView() {
 
   const formatTime = (time: string | null) => {
     if (!time) return '-';
-    
+
     // Se já estiver no formato HH:mm, retornar como está
     if (/^\d{2}:\d{2}$/.test(time)) {
       return time;
     }
-    
+
     // Se estiver no formato yyyy-MM-dd HH:mm:ss ou similar, extrair apenas HH:mm
     const timeMatch = time.match(/(\d{2}):(\d{2})(?::\d{2})?/);
     if (timeMatch) {
       return `${timeMatch[1]}:${timeMatch[2]}`;
     }
-    
+
     // Tentar converter para Date como fallback
     try {
       const date = new Date(time);
       if (!isNaN(date.getTime())) {
         return date.toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+          hour: '2-digit',
+          minute: '2-digit',
+        });
       }
     } catch (e) {
       // Ignorar erro
     }
-    
+
     return '-';
   };
 
   const formatDate = (date: string | Date | null | undefined) => {
     if (!date) return 'Data inválida';
-    
+
     // Normalizar para string se for Date object
     let dateStr: string;
     if (date instanceof Date) {
@@ -200,12 +200,12 @@ export default function ReportsView() {
     } else {
       return 'Data inválida';
     }
-    
+
     const dateObj = new Date(dateStr + 'T00:00:00');
     if (isNaN(dateObj.getTime())) {
       return 'Data inválida';
     }
-    
+
     const formattedDate = dateObj.toLocaleDateString('pt-BR');
     const dayOfWeek = dateObj.toLocaleDateString('pt-BR', { weekday: 'short' }).toUpperCase();
     return `${formattedDate} - ${dayOfWeek}`;
@@ -214,7 +214,7 @@ export default function ReportsView() {
   const formatMinutes = (minutes: number, showZero: boolean = false) => {
     const roundedMinutes = Math.round(minutes);
     if (roundedMinutes === 0 && !showZero) return '-';
-    
+
     const hours = Math.floor(roundedMinutes / 60);
     const mins = roundedMinutes % 60;
     if (hours > 0) {
@@ -227,7 +227,7 @@ export default function ReportsView() {
     const absMinutes = Math.abs(minutes);
     const hours = Math.floor(absMinutes / 60);
     const mins = absMinutes % 60;
-    
+
     if (hours > 0) {
       return `${hours}h ${mins}min`;
     }
@@ -239,7 +239,7 @@ export default function ReportsView() {
     const mins = minutes % 60;
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
   };
-  
+
   const formatMinutesAsTime = (minutes: number) => {
     if (minutes === 0) return '-';
     const totalSeconds = Math.round(minutes * 60);
@@ -248,7 +248,7 @@ export default function ReportsView() {
     const secs = totalSeconds % 60;
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
-  
+
   const calculateBalance = (earlyArrival: number, overtime: number, delay: number, earlyExit: number = 0) => {
     // Saldo = (Hora Extra + Chegada Antecipada) - (Atraso + Saída Antecipada)
     return (earlyArrival + overtime) - (delay + earlyExit);
@@ -270,41 +270,41 @@ export default function ReportsView() {
     // Cabeçalho compacto com fundo colorido
     pdf.setFillColor(41, 128, 185); // Azul elegante
     pdf.rect(0, 0, pageWidth, headerHeight, 'F');
-    
+
     // Título principal
     pdf.setTextColor(255, 255, 255); // Branco
     pdf.setFontSize(18);
     pdf.setFont('helvetica', 'bold');
     pdf.text('FOLHA DE PONTO', pageWidth / 2, 10, { align: 'center' });
-    
+
     // Informações do funcionário no cabeçalho (compacto)
     pdf.setFontSize(10);
     pdf.setFont('helvetica', 'normal');
     pdf.text(`${data.employee.name} | ${data.employee.department || '-'} | ${data.month}`, pageWidth / 2, 16, { align: 'center' });
-    
+
     // Resetar cor do texto
     pdf.setTextColor(0, 0, 0); // Preto
     yPos = headerHeight + 6;
 
     // Detectar se é turno único
     const isSingleShift = data.isSingleShift || false;
-    
+
     // Tabela expandida - larguras ajustadas para ocupar melhor a página A4 (210mm)
-    // Colunas: Data, Dia, Ocorr, Entrada, Almoço, Retorno, Saída, Atraso, Extra, Saldo
+    // Colunas: Data, Dia, Ocorr, Entrada, Almoço, Retorno, Saída, Trabalhado, Previsto
     // Aumentadas colunas de horário para acomodar nomes completos de ocorrências
-    const colWidths = [25, 12, 14, 18, 18, 18, 18, 14, 14, 16];
+    const colWidths = [25, 12, 14, 18, 18, 18, 18, 24, 24];
     const totalTableWidth = colWidths.reduce((sum, w) => sum + w, 0); // Total: ~171mm
     const tableMargin = Math.max(10, (pageWidth - totalTableWidth) / 2); // Centralizar com margem mínima
-    
+
     // Headers dinâmicos baseados no tipo de turno
     const headers = isSingleShift
-      ? ['Data', 'Dia', 'Ocorr.', 'Entrada', 'S. Intervalo', 'E. Pós-Int.', 'Saída Final', 'Atraso', 'Extra', 'Saldo']
-      : ['Data', 'Dia', 'Ocorr.', 'Entrada', 'Almoço', 'Retorno', 'Saída', 'Atraso', 'Extra', 'Saldo'];
-    
+      ? ['Data', 'Dia', 'Ocorr.', 'Entrada', 'S. Intervalo', 'E. Pós-Int.', 'Saída Final', 'Trabalhado', 'Previsto']
+      : ['Data', 'Dia', 'Ocorr.', 'Entrada', 'Almoço', 'Retorno', 'Saída', 'Trabalhado', 'Previsto'];
+
     // Cabeçalho da tabela com fundo
     pdf.setFillColor(52, 152, 219); // Azul mais claro
     pdf.rect(tableMargin, yPos - 5, totalTableWidth, 8, 'F');
-    
+
     pdf.setFontSize(7);
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(255, 255, 255);
@@ -315,7 +315,7 @@ export default function ReportsView() {
     });
     pdf.setTextColor(0, 0, 0); // Resetar para preto
     yPos += lineHeight + 2;
-    
+
     // Linha separadora
     pdf.setDrawColor(200, 200, 200);
     pdf.line(tableMargin, yPos, tableMargin + totalTableWidth, yPos);
@@ -325,13 +325,13 @@ export default function ReportsView() {
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(7);
     let rowIndex = 0;
-    
+
     data.days.forEach((day: any) => {
       // Verificar se precisa de nova página
       if (yPos > pageHeight - 40) {
         pdf.addPage();
         yPos = 7;
-        
+
         // Redesenhar cabeçalho da tabela na nova página
         pdf.setFillColor(52, 152, 219);
         pdf.rect(tableMargin, yPos - 5, totalTableWidth, 8, 'F');
@@ -349,7 +349,7 @@ export default function ReportsView() {
         pdf.line(tableMargin, yPos, tableMargin + totalTableWidth, yPos);
         yPos += 2.5;
       }
-      
+
       // Alternar cores das linhas (mais sutil)
       if (rowIndex % 2 === 0) {
         pdf.setFillColor(250, 250, 250);
@@ -369,14 +369,14 @@ export default function ReportsView() {
         dateText = dateText.substring(0, 12);
       }
       // Não adicionar ⚠ na data - isso está na coluna de ocorrência agora
-      
+
       // Texto do dia da semana (garantir que seja apenas 3 caracteres)
       let dayOfWeekText = String(day.dayOfWeek || '').trim();
       if (dayOfWeekText.length > 3) {
         dayOfWeekText = dayOfWeekText.substring(0, 3);
       }
       dayOfWeekText = dayOfWeekText.toUpperCase();
-      
+
       // Labels abreviadas para ocorrências
       const occurrenceLabels: Record<string, string> = {
         FERIADO: 'Feriado',
@@ -389,24 +389,24 @@ export default function ReportsView() {
         // Abreviar para evitar quebra em PDF
         ESQUECIMENTO_BATIDA: 'E. Batida',
       };
-      
+
       // Verificar se tem evento do calendário (prioridade sobre ocorrência)
       const hasCalendarEvent = day.calendarEventType ? true : false;
       const calendarEventType = day.calendarEventType ? String(day.calendarEventType).trim().toUpperCase() : '';
       const calendarEventLabel = calendarEventType === 'FERIADO' ? 'Feriado' : calendarEventType === 'DSR' ? 'DSR' : '';
-      
+
       // Verificar se tem ocorrência (só se não tiver evento do calendário)
       const hasOccurrence = !hasCalendarEvent && day.occurrenceType ? true : false;
       const occType = day.occurrenceType ? String(day.occurrenceType).trim().toUpperCase() : '';
       const occLabel = occType && occurrenceLabels[occType] ? occurrenceLabels[occType] : '';
-      
+
       // Priorizar evento do calendário sobre ocorrência
       const displayType = hasCalendarEvent ? calendarEventType : occType;
       // Para DSR, mostrar apenas "DSR" (sem descrição completa para não ficar muito grande)
-      const displayLabel = hasCalendarEvent 
+      const displayLabel = hasCalendarEvent
         ? (calendarEventType === 'DSR' ? 'DSR' : calendarEventLabel)
         : occLabel;
-      
+
       // Verificar quais batidas têm ocorrência (pode vir como boolean ou número do banco)
       const hasOccMorning = day.occurrenceMorningEntry === true || day.occurrenceMorningEntry === 1;
       const hasOccLunch = day.occurrenceLunchExit === true || day.occurrenceLunchExit === 1;
@@ -417,21 +417,21 @@ export default function ReportsView() {
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(7);
       pdf.setTextColor(0, 0, 0);
-      
+
       xPos = tableMargin;
       // Calcular posição Y centralizada para o texto (centralizar verticalmente na célula)
       const textY = yPos - textVerticalOffset + (lineHeight / 2) - 1;
-      
+
       // Coluna 0: Data - garantir que não ultrapasse
       const finalDateText = String(dateText).substring(0, 12); // Limitar a 12 caracteres
       pdf.text(finalDateText, xPos + 0.5, textY);
       xPos += colWidths[0];
-      
+
       // Coluna 1: Dia - garantir que seja exatamente 3 caracteres
       const finalDayText = String(dayOfWeekText).substring(0, 3);
       pdf.text(finalDayText, xPos + 0.5, textY);
       xPos += colWidths[1];
-      
+
       // Coluna 2: Ocorrência - mostrar evento do calendário ou ocorrência
       pdf.setTextColor(0, 0, 0);
       let occurrenceText = '-';
@@ -449,7 +449,7 @@ export default function ReportsView() {
       pdf.text(occurrenceText, xPos + 0.5, textY);
       xPos += colWidths[2];
       pdf.setTextColor(0, 0, 0);
-      
+
       // Coluna 3: Entrada - mostrar evento do calendário, ocorrência se marcada, senão horário
       if (hasCalendarEvent) {
         // Mostrar evento do calendário em todas as batidas
@@ -458,14 +458,14 @@ export default function ReportsView() {
       } else if (hasOccMorning && occLabel) {
         pdf.setTextColor(52, 73, 94); // Cinza escuro para ocorrência
         pdf.text(occLabel, xPos + 0.5, textY);
-          } else {
+      } else {
         pdf.setTextColor(0, 0, 0);
         const entryText = day.morningEntry && day.morningEntry !== '-' ? day.morningEntry : '-';
         pdf.text(String(entryText), xPos + 0.5, textY);
       }
       xPos += colWidths[3];
       pdf.setTextColor(0, 0, 0);
-      
+
       // Coluna 4: Almoço - mostrar evento do calendário, ocorrência se marcada, senão horário
       if (hasCalendarEvent) {
         pdf.setTextColor(52, 73, 94);
@@ -473,14 +473,14 @@ export default function ReportsView() {
       } else if (hasOccLunch && occLabel) {
         pdf.setTextColor(52, 73, 94);
         pdf.text(occLabel, xPos + 0.5, textY);
-        } else {
+      } else {
         pdf.setTextColor(0, 0, 0);
         const lunchText = day.lunchExit && day.lunchExit !== '-' ? day.lunchExit : '-';
         pdf.text(String(lunchText), xPos + 0.5, textY);
       }
       xPos += colWidths[4];
       pdf.setTextColor(0, 0, 0);
-      
+
       // Coluna 5: Retorno - mostrar evento do calendário, ocorrência se marcada, senão horário
       if (hasCalendarEvent) {
         pdf.setTextColor(52, 73, 94);
@@ -495,7 +495,7 @@ export default function ReportsView() {
       }
       xPos += colWidths[5];
       pdf.setTextColor(0, 0, 0);
-      
+
       // Coluna 6: Saída - mostrar evento do calendário, ocorrência se marcada, senão horário
       if (hasCalendarEvent) {
         pdf.setTextColor(52, 73, 94);
@@ -510,39 +510,17 @@ export default function ReportsView() {
       }
       xPos += colWidths[6];
       pdf.setTextColor(0, 0, 0);
-      
-      // Coluna 7: Atraso
+
+      // Coluna 7: Trabalhado
       pdf.setTextColor(0, 0, 0);
-      const atrasoText = day.atrasoClt > 0 ? `${day.atrasoClt}min` : '-';
-      if (day.atrasoClt > 0) {
-        pdf.setTextColor(231, 76, 60);
-      }
-      pdf.text(String(atrasoText), xPos + 0.5, textY);
+      const workedText = day.workedMinutes > 0 ? formatMinutes(day.workedMinutes, true) : '-';
+      pdf.text(String(workedText), xPos + 0.5, textY);
       xPos += colWidths[7];
-      pdf.setTextColor(0, 0, 0);
-      
-      // Coluna 8: Extra
-      const extraText = day.extraClt > 0 ? `${day.extraClt}min` : '-';
-      if (day.extraClt > 0) {
-        pdf.setTextColor(52, 152, 219);
-      }
-      pdf.text(String(extraText), xPos + 0.5, textY);
+
+      // Coluna 8: Previsto
+      const expectedText = day.expectedMinutes > 0 ? formatMinutes(day.expectedMinutes, true) : '-';
+      pdf.text(String(expectedText), xPos + 0.5, textY);
       xPos += colWidths[8];
-      pdf.setTextColor(0, 0, 0);
-      
-      // Coluna 9: Saldo
-      const saldoText = day.saldoClt !== 0 
-        ? `${formatBalance(day.saldoClt)}${day.saldoClt > 0 ? '+' : '-'}` 
-        : '0min';
-      if (day.saldoClt > 0) {
-        pdf.setTextColor(39, 174, 96);
-      } else if (day.saldoClt < 0) {
-        pdf.setTextColor(231, 76, 60);
-      } else {
-        pdf.setTextColor(127, 140, 141);
-      }
-      pdf.text(String(saldoText), xPos + 0.5, textY);
-      pdf.setTextColor(0, 0, 0);
 
       yPos += lineHeight;
       rowIndex++;
@@ -558,40 +536,32 @@ export default function ReportsView() {
     const totalsWidth = totalTableWidth;
     pdf.setFillColor(241, 245, 249); // Cinza muito claro
     pdf.rect(tableMargin, yPos - 3.5, totalsWidth, 10, 'F');
-    
+
     pdf.setFontSize(10);
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(41, 128, 185); // Azul
     pdf.text('TOTAIS:', tableMargin + 2, yPos);
-    
-    // Exibir apenas o Saldo
+
+    // Exibir Totais Trabalhado e Previsto
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(0, 0, 0);
-    pdf.text('Saldo:', tableMargin + 2, yPos + 5.5);
-    
-    // Valor do saldo com cor apropriada
-    if (data.totals.saldoClt > 0) {
-      pdf.setTextColor(39, 174, 96); // Verde
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(`${formatBalance(data.totals.saldoClt)}+`, tableMargin + totalsWidth - 2, yPos + 5.5, { align: 'right' });
-    } else if (data.totals.saldoClt < 0) {
-      pdf.setTextColor(231, 76, 60); // Vermelho
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(`${formatBalance(data.totals.saldoClt)}-`, tableMargin + totalsWidth - 2, yPos + 5.5, { align: 'right' });
-    } else {
-      pdf.setTextColor(127, 140, 141); // Cinza
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('0min', tableMargin + totalsWidth - 2, yPos + 5.5, { align: 'right' });
-    }
-    
+    pdf.text('Trabalhado:', tableMargin + 20, yPos + 5.5);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`${formatMinutes(data.totals.workedMinutes || 0, true)}`, tableMargin + 40, yPos + 5.5);
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('Previsto:', tableMargin + 60, yPos + 5.5);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`${formatMinutes(data.totals.expectedMinutes || 0, true)}`, tableMargin + 75, yPos + 5.5);
+
     yPos += 12;
 
     // Campo para assinatura compacto e centralizado
     pdf.setDrawColor(200, 200, 200);
     pdf.setFillColor(255, 255, 255);
     pdf.rect(tableMargin, yPos, totalsWidth, 12, 'FD');
-    
+
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(0, 0, 0);
@@ -599,7 +569,7 @@ export default function ReportsView() {
     pdf.setDrawColor(150, 150, 150);
     pdf.line(tableMargin + 28, yPos + 6, tableMargin + totalsWidth - 55, yPos + 6);
     pdf.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, tableMargin + totalsWidth - 2, yPos + 6, { align: 'right' });
-    
+
     return yPos;
   };
 
@@ -615,18 +585,18 @@ export default function ReportsView() {
     try {
       // Importar jsPDF dinamicamente
       const { default: jsPDF } = await import('jspdf');
-      
+
       // Pegar o mês atual baseado nas datas selecionadas
       const month = startDate.substring(0, 7); // YYYY-MM
-      
+
       const response = await fetch(`/api/pdf?employeeId=${employeeIdToUse}&month=${month}`);
       const data = await response.json();
-      
+
       if (response.status !== 200) {
         alert(data.error || 'Erro ao gerar PDF');
         return;
       }
-      
+
       if (!data.days || data.days.length === 0) {
         alert('Nenhum dado encontrado para gerar o PDF. Verifique se há registros processados para este funcionário e mês.');
         return;
@@ -649,7 +619,7 @@ export default function ReportsView() {
   };
 
   const updateOccurrenceType = async (
-    reportId: number, 
+    reportId: number,
     occurrenceType: string | null,
     occurrenceMorningEntry?: boolean,
     occurrenceLunchExit?: boolean,
@@ -657,7 +627,7 @@ export default function ReportsView() {
     occurrenceFinalExit?: boolean
   ) => {
     if (isSavingOccurrence) return; // Prevenir múltiplos cliques
-    
+
     setIsSavingOccurrence(true);
     try {
       const response = await fetch('/api/reports/update-occurrence', {
@@ -688,8 +658,8 @@ export default function ReportsView() {
       // Atualizar o estado local
       setReports(prevReports =>
         prevReports.map(r =>
-          r.id === reportId ? { 
-            ...r, 
+          r.id === reportId ? {
+            ...r,
             occurrence_type: result.data.occurrence_type,
             occurrence_morning_entry: result.data.occurrence_morning_entry,
             occurrence_lunch_exit: result.data.occurrence_lunch_exit,
@@ -713,7 +683,7 @@ export default function ReportsView() {
   // Função para salvar correção manual de batidas
   const saveManualPunchCorrection = async (report: Report) => {
     if (isSavingManualPunch) return; // Prevenir múltiplos cliques
-    
+
     setIsSavingManualPunch(true);
     try {
       // Converter horários para formato HH:mm (remover data se presente)
@@ -812,19 +782,19 @@ export default function ReportsView() {
   // Função para buscar correção manual existente e preencher o modal
   const openManualPunchModal = async (report: Report) => {
     setEditingManualPunch(report.id);
-    
+
     // Buscar correção manual existente e batidas originais
     try {
       const response = await fetch(`/api/manual-punch?employeeId=${report.employee_id}&date=${report.date}`);
       const data = await response.json();
-      
+
       // Função auxiliar para formatar datetime para HH:mm
       const formatToTime = (time: string | null): string => {
         if (!time) return '';
         const match = time.match(/(\d{2}:\d{2})/);
         return match ? match[1] : '';
       };
-      
+
       // Preencher batidas originais do relógio
       if (data.originalPunches) {
         setOriginalMorningEntry(formatToTime(data.originalPunches.morning_entry));
@@ -838,7 +808,7 @@ export default function ReportsView() {
         setOriginalAfternoonEntry('');
         setOriginalFinalExit('');
       }
-      
+
       if (data.data) {
         // Preencher com dados existentes (formatar para HH:mm)
         setEditingManualMorningEntry(formatToTime(data.data.morning_entry));
@@ -861,7 +831,7 @@ export default function ReportsView() {
         const match = time.match(/(\d{2}:\d{2})/);
         return match ? match[1] : '';
       };
-      
+
       setEditingManualMorningEntry(formatToTime(report.morning_entry));
       setEditingManualLunchExit(formatToTime(report.lunch_exit));
       setEditingManualAfternoonEntry(formatToTime(report.afternoon_entry));
@@ -911,39 +881,39 @@ export default function ReportsView() {
     try {
       // Importar jsPDF dinamicamente
       const { default: jsPDF } = await import('jspdf');
-      
+
       // Pegar o mês atual baseado nas datas selecionadas
       const month = startDate.substring(0, 7); // YYYY-MM
-      
+
       // Criar PDF
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      
+
       let isFirstEmployee = true;
       let employeesWithData = 0;
-      
+
       // Processar cada funcionário
       for (let i = 0; i < employees.length; i++) {
         const employee = employees[i];
-        
+
         try {
           const response = await fetch(`/api/pdf?employeeId=${employee.id}&month=${month}`);
           const data = await response.json();
-          
+
           if (response.status !== 200) {
             continue;
           }
-          
+
           if (!data.days || data.days.length === 0) {
             continue;
           }
-          
+
           // Se não for o primeiro funcionário, adicionar nova página
           if (!isFirstEmployee) {
             pdf.addPage();
           }
-          
+
           // Renderizar página do funcionário
           renderEmployeePage(pdf, data, pageWidth, pageHeight);
           isFirstEmployee = false;
@@ -953,17 +923,17 @@ export default function ReportsView() {
           continue;
         }
       }
-      
+
       if (employeesWithData === 0) {
         alert('Nenhum dado encontrado para gerar o PDF. Verifique se há registros processados para o mês selecionado.');
         return;
       }
-      
+
       // Salvar PDF
       const monthYear = month.replace('-', '_');
       const fileName = `Folha_Ponto_Todos_Funcionarios_${monthYear}.pdf`;
       pdf.save(fileName);
-      
+
       alert(`PDF gerado com sucesso! ${employeesWithData} funcionário(s) incluído(s).`);
     } catch (error) {
       alert('Erro ao gerar PDF. Tente novamente.');
@@ -978,7 +948,7 @@ export default function ReportsView() {
           <p className="text-neutral-600">Visualize e exporte relatórios detalhados de ponto</p>
         </div>
       </div>
-      
+
       <div className="p-4 bg-primary-50 border-2 border-primary-200 rounded-xl">
         <p className="text-sm text-primary-800 flex items-start space-x-2">
           <svg className="w-5 h-5 text-primary-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1093,54 +1063,45 @@ export default function ReportsView() {
                 </th>
                 {/* Headers dinâmicos: verificar se há turno único nos reports */}
                 {reports.length > 0 && (reports[0].shift_type === 'MORNING_ONLY' || reports[0].shift_type === 'AFTERNOON_ONLY') ? (
-                      <>
-                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                          Entrada
+                  <>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                      Entrada
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                          S. Intervalo
+                      S. Intervalo
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                          E. Pós-Int.
+                      E. Pós-Int.
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                          Saída Final
+                      Saída Final
                     </th>
                   </>
                 ) : (
                   <>
-                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                          E. Manhã
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                          S. Alm.
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                          E. Tarde
-                        </th>
-                        <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                          S. Tarde
-                        </th>
-                      </>
-                    )}
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                      H.TRAB.
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap" title="Jornada prevista do dia (mesma base para todos os dias da mesma semana)">
-                      PREV.
+                      E. Manhã
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                      ATRASO
+                      S. Alm.
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                      EXTRA
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap" title="Saldo CLT (após tolerância 5min e regras de excesso de intervalo). Para saldo gerencial use: H.TRAB. − PREV.">
-                      SALDO
+                      E. Tarde
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
-                      AÇÕES
+                      S. Tarde
                     </th>
+                  </>
+                )}
+                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                  H.TRAB.
+                </th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap" title="Jornada prevista do dia (mesma base para todos os dias da mesma semana)">
+                  PREV.
+                </th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider whitespace-nowrap">
+                  AÇÕES
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-neutral-200">
@@ -1167,147 +1128,147 @@ export default function ReportsView() {
                       <div className="text-[10px] text-neutral-500">{report.department}</div>
                     </td>
                     {/* Para turnos únicos, os campos são sempre na ordem: 1ª=Entrada, 2ª=Saída intervalo, 3ª=Entrada pós-intervalo, 4ª=Saída final */}
-                        {isSingleShift ? (
-                          <>
-                            {/* Coluna 1: Entrada (1ª batida) */}
+                    {isSingleShift ? (
+                      <>
+                        {/* Coluna 1: Entrada (1ª batida) */}
                         <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.calendar_event_type === 'DSR' ? (
-                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
-                                  DSR
-                                </span>
-                              ) : report.occurrence_morning_entry && report.occurrence_type ? (
-                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                          {report.calendar_event_type === 'DSR' ? (
+                            <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                              DSR
+                            </span>
+                          ) : report.occurrence_morning_entry && report.occurrence_type ? (
+                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                              {getOccurrenceTypeLabel(report.occurrence_type)}
                             </span>
                           ) : (
-                                <span className={`text-neutral-900 ${report.is_manual_morning_entry ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_morning_entry ? 'Batida corrigida manualmente' : ''}>
-                                  {report.is_manual_morning_entry && '🔧 '}
-                                  {formatTime(report.morning_entry)}
-                                </span>
+                            <span className={`text-neutral-900 ${report.is_manual_morning_entry ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_morning_entry ? 'Batida corrigida manualmente' : ''}>
+                              {report.is_manual_morning_entry && '🔧 '}
+                              {formatTime(report.morning_entry)}
+                            </span>
                           )}
                         </td>
-                            {/* Coluna 2: Saída Intervalo (2ª batida) */}
+                        {/* Coluna 2: Saída Intervalo (2ª batida) */}
                         <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.calendar_event_type === 'DSR' ? (
-                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
-                                  DSR
-                                </span>
-                              ) : report.occurrence_lunch_exit && report.occurrence_type ? (
-                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                          {report.calendar_event_type === 'DSR' ? (
+                            <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                              DSR
+                            </span>
+                          ) : report.occurrence_lunch_exit && report.occurrence_type ? (
+                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                              {getOccurrenceTypeLabel(report.occurrence_type)}
                             </span>
                           ) : (
-                                <span className={`text-neutral-900 ${report.is_manual_lunch_exit ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_lunch_exit ? 'Batida corrigida manualmente' : ''}>
-                                  {report.is_manual_lunch_exit && '🔧 '}
-                                  {formatTime(report.lunch_exit)}
-                                </span>
+                            <span className={`text-neutral-900 ${report.is_manual_lunch_exit ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_lunch_exit ? 'Batida corrigida manualmente' : ''}>
+                              {report.is_manual_lunch_exit && '🔧 '}
+                              {formatTime(report.lunch_exit)}
+                            </span>
                           )}
                         </td>
-                            {/* Coluna 3: Entrada Pós-Intervalo (3ª batida) */}
+                        {/* Coluna 3: Entrada Pós-Intervalo (3ª batida) */}
                         <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.calendar_event_type === 'DSR' ? (
-                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
-                                  DSR
-                                </span>
-                              ) : report.occurrence_afternoon_entry && report.occurrence_type ? (
-                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                          {report.calendar_event_type === 'DSR' ? (
+                            <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                              DSR
+                            </span>
+                          ) : report.occurrence_afternoon_entry && report.occurrence_type ? (
+                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                              {getOccurrenceTypeLabel(report.occurrence_type)}
                             </span>
                           ) : (
-                                <span className={`text-neutral-900 ${report.is_manual_afternoon_entry ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_afternoon_entry ? 'Batida corrigida manualmente' : ''}>
-                                  {report.is_manual_afternoon_entry && '🔧 '}
-                                  {formatTime(report.afternoon_entry)}
-                                </span>
+                            <span className={`text-neutral-900 ${report.is_manual_afternoon_entry ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_afternoon_entry ? 'Batida corrigida manualmente' : ''}>
+                              {report.is_manual_afternoon_entry && '🔧 '}
+                              {formatTime(report.afternoon_entry)}
+                            </span>
                           )}
                         </td>
-                            {/* Coluna 4: Saída Final (4ª batida) */}
+                        {/* Coluna 4: Saída Final (4ª batida) */}
                         <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.calendar_event_type === 'DSR' ? (
-                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
-                                  DSR
-                                </span>
-                              ) : report.occurrence_final_exit && report.occurrence_type ? (
-                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                                  {getOccurrenceTypeLabel(report.occurrence_type)}
+                          {report.calendar_event_type === 'DSR' ? (
+                            <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                              DSR
+                            </span>
+                          ) : report.occurrence_final_exit && report.occurrence_type ? (
+                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                              {getOccurrenceTypeLabel(report.occurrence_type)}
                             </span>
                           ) : (
-                                <span className={`text-neutral-900 ${report.is_manual_final_exit ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_final_exit ? 'Batida corrigida manualmente' : ''}>
-                                  {report.is_manual_final_exit && '🔧 '}
-                                  {formatTime(report.final_exit)}
-                                </span>
+                            <span className={`text-neutral-900 ${report.is_manual_final_exit ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_final_exit ? 'Batida corrigida manualmente' : ''}>
+                              {report.is_manual_final_exit && '🔧 '}
+                              {formatTime(report.final_exit)}
+                            </span>
                           )}
                         </td>
                       </>
                     ) : (
                       <>
-                            {/* Jornada completa: manter mapeamento original */}
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.calendar_event_type === 'DSR' ? (
-                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
-                                  DSR
-                                </span>
-                              ) : report.occurrence_morning_entry && report.occurrence_type ? (
-                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                                  {getOccurrenceTypeLabel(report.occurrence_type)}
-                                </span>
-                              ) : (
-                                <span className={`text-neutral-900 ${report.is_manual_morning_entry ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_morning_entry ? 'Batida corrigida manualmente' : ''}>
-                                  {report.is_manual_morning_entry && '🔧 '}
-                                  {formatTime(report.morning_entry)}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.calendar_event_type === 'DSR' ? (
-                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
-                                  DSR
-                                </span>
-                              ) : report.occurrence_lunch_exit && report.occurrence_type ? (
-                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                                  {getOccurrenceTypeLabel(report.occurrence_type)}
-                                </span>
-                              ) : (
-                                <span className={`text-neutral-900 ${report.is_manual_lunch_exit ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_lunch_exit ? 'Batida corrigida manualmente' : ''}>
-                                  {report.is_manual_lunch_exit && '🔧 '}
-                                  {formatTime(report.lunch_exit)}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.calendar_event_type === 'DSR' ? (
-                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
-                                  DSR
-                                </span>
-                              ) : report.occurrence_afternoon_entry && report.occurrence_type ? (
-                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                                  {getOccurrenceTypeLabel(report.occurrence_type)}
-                                </span>
-                              ) : (
-                                <span className={`text-neutral-900 ${report.is_manual_afternoon_entry ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_afternoon_entry ? 'Batida corrigida manualmente' : ''}>
-                                  {report.is_manual_afternoon_entry && '🔧 '}
-                                  {formatTime(report.afternoon_entry)}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
-                              {report.calendar_event_type === 'DSR' ? (
-                                <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
-                                  DSR
-                                </span>
-                              ) : report.occurrence_final_exit && report.occurrence_type ? (
-                                <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
-                                  {getOccurrenceTypeLabel(report.occurrence_type)}
-                                </span>
-                              ) : (
-                                <span className={`text-neutral-900 ${report.is_manual_final_exit ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_final_exit ? 'Batida corrigida manualmente' : ''}>
-                                  {report.is_manual_final_exit && '🔧 '}
-                                  {formatTime(report.final_exit)}
-                                </span>
-                              )}
-                            </td>
-                          </>
-                        )}
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                        {/* Jornada completa: manter mapeamento original */}
+                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                          {report.calendar_event_type === 'DSR' ? (
+                            <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                              DSR
+                            </span>
+                          ) : report.occurrence_morning_entry && report.occurrence_type ? (
+                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                              {getOccurrenceTypeLabel(report.occurrence_type)}
+                            </span>
+                          ) : (
+                            <span className={`text-neutral-900 ${report.is_manual_morning_entry ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_morning_entry ? 'Batida corrigida manualmente' : ''}>
+                              {report.is_manual_morning_entry && '🔧 '}
+                              {formatTime(report.morning_entry)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                          {report.calendar_event_type === 'DSR' ? (
+                            <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                              DSR
+                            </span>
+                          ) : report.occurrence_lunch_exit && report.occurrence_type ? (
+                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                              {getOccurrenceTypeLabel(report.occurrence_type)}
+                            </span>
+                          ) : (
+                            <span className={`text-neutral-900 ${report.is_manual_lunch_exit ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_lunch_exit ? 'Batida corrigida manualmente' : ''}>
+                              {report.is_manual_lunch_exit && '🔧 '}
+                              {formatTime(report.lunch_exit)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                          {report.calendar_event_type === 'DSR' ? (
+                            <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                              DSR
+                            </span>
+                          ) : report.occurrence_afternoon_entry && report.occurrence_type ? (
+                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                              {getOccurrenceTypeLabel(report.occurrence_type)}
+                            </span>
+                          ) : (
+                            <span className={`text-neutral-900 ${report.is_manual_afternoon_entry ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_afternoon_entry ? 'Batida corrigida manualmente' : ''}>
+                              {report.is_manual_afternoon_entry && '🔧 '}
+                              {formatTime(report.afternoon_entry)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap text-xs">
+                          {report.calendar_event_type === 'DSR' ? (
+                            <span className="px-2 py-1 rounded text-[10px] font-medium border bg-blue-100 text-blue-800 border-blue-300">
+                              DSR
+                            </span>
+                          ) : report.occurrence_final_exit && report.occurrence_type ? (
+                            <span className={`px-2 py-1 rounded text-[10px] font-medium border ${getOccurrenceTypeColor(report.occurrence_type)}`}>
+                              {getOccurrenceTypeLabel(report.occurrence_type)}
+                            </span>
+                          ) : (
+                            <span className={`text-neutral-900 ${report.is_manual_final_exit ? 'text-orange-600 font-semibold' : ''}`} title={report.is_manual_final_exit ? 'Batida corrigida manualmente' : ''}>
+                              {report.is_manual_final_exit && '🔧 '}
+                              {formatTime(report.final_exit)}
+                            </span>
+                          )}
+                        </td>
+                      </>
+                    )}
+                    <td className="px-3 py-3 whitespace-nowrap text-xs">
                       {report.worked_minutes && report.worked_minutes > 0 ? (
                         <span className="text-neutral-700 font-medium" title="Horas trabalhadas no dia">
                           {formatMinutes(report.worked_minutes, true)}
@@ -1316,43 +1277,14 @@ export default function ReportsView() {
                         '-'
                       )}
                     </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-600" title="Jornada prevista (mesma para todos os dias da mesma semana)">
+                    <td className="px-3 py-3 whitespace-nowrap text-xs text-neutral-600" title="Jornada prevista (mesma para todos os dias da mesma semana)">
                       {report.expected_minutes != null && report.expected_minutes > 0 ? (
                         formatMinutes(report.expected_minutes, true)
                       ) : (
                         '-'
                       )}
                     </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
-                      {report.atraso_clt_minutes && report.atraso_clt_minutes > 0 ? (
-                        <span className="text-red-600 font-medium" title="Atraso CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
-                          {formatMinutes(report.atraso_clt_minutes)}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
-                      {report.extra_clt_minutes && report.extra_clt_minutes > 0 ? (
-                        <span className="text-blue-600 font-medium" title="Hora extra CLT (após tolerância de 5 min por marcação, máximo 10 min/dia)">
-                          {formatMinutes(report.extra_clt_minutes)}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
-                      {(() => {
-                        const saldoClt = report.saldo_clt_minutes || 0;
-                        return (
-                          <div className={`font-semibold ${saldoClt > 0 ? 'text-green-600' : saldoClt < 0 ? 'text-red-600' : 'text-neutral-600'}`}>
-                            {formatMinutes(Math.abs(saldoClt), true)}
-                            {saldoClt > 0 ? '+' : saldoClt < 0 ? '-' : ''}
-                          </div>
-                        );
-                      })()}
-                    </td>
-                            <td className="px-3 py-3 whitespace-nowrap text-xs">
+                    <td className="px-3 py-3 whitespace-nowrap text-xs">
                       <div className="flex items-center gap-1">
                         {/* Ícone de ocorrência com tooltip */}
                         {(report.calendar_event_type || report.occurrence_type) && (
@@ -1397,9 +1329,9 @@ export default function ReportsView() {
                             {/* Tooltip que aparece no hover */}
                             <div className="absolute left-1/2 bottom-full mb-2 -translate-x-1/2 z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none">
                               <div className="bg-neutral-800 text-white text-xs rounded py-1.5 px-3 whitespace-nowrap shadow-xl">
-                                {report.calendar_event_type === 'FERIADO' 
+                                {report.calendar_event_type === 'FERIADO'
                                   ? (report.calendar_event_description ? `Feriado: ${report.calendar_event_description}` : 'Feriado')
-                                  : report.calendar_event_type === 'DSR' 
+                                  : report.calendar_event_type === 'DSR'
                                     ? 'DSR - Descanso Semanal Remunerado'
                                     : getOccurrenceTypeLabel(report.occurrence_type || '')}
                                 {/* Seta do tooltip apontando para baixo */}
@@ -1472,23 +1404,6 @@ export default function ReportsView() {
                 <td className="px-3 py-3 text-xs text-neutral-600 whitespace-nowrap" title="Soma das jornadas previstas do período">
                   {formatMinutes(reports.reduce((sum, r) => sum + (r.expected_minutes || 0), 0), true)}
                 </td>
-                <td className="px-3 py-3 text-xs text-red-600 whitespace-nowrap">
-                  {formatMinutes(reports.reduce((sum, r) => sum + (r.atraso_clt_minutes || 0), 0))}
-                </td>
-                <td className="px-3 py-3 text-xs text-blue-600 whitespace-nowrap">
-                  {formatMinutes(reports.reduce((sum, r) => sum + (r.extra_clt_minutes || 0), 0))}
-                </td>
-                <td className="px-3 py-3 text-xs whitespace-nowrap">
-                  {(() => {
-                    const totalSaldoClt = reports.reduce((sum, r) => sum + (r.saldo_clt_minutes || 0), 0);
-                    return (
-                      <span className={`font-semibold ${totalSaldoClt > 0 ? 'text-green-600' : totalSaldoClt < 0 ? 'text-red-600' : 'text-neutral-600'}`}>
-                        {formatMinutes(Math.abs(totalSaldoClt), true)}
-                        {totalSaldoClt > 0 ? '+' : totalSaldoClt < 0 ? '-' : ''}
-                      </span>
-                    );
-                  })()}
-                </td>
                 <td className="px-3 py-3 text-xs text-neutral-700">
                   {/* Coluna Ações - vazia nos totais */}
                 </td>
@@ -1518,7 +1433,7 @@ export default function ReportsView() {
                 setEditingOccurrenceFinalExit(false);
               }}
             />
-            
+
             {/* Modal Content */}
             <div
               className="relative bg-white rounded-xl shadow-2xl p-6 w-full max-w-md"
@@ -1594,7 +1509,7 @@ export default function ReportsView() {
               {(editingOccurrenceType || report.occurrence_type) && (() => {
                 // Detectar se é turno único (horista)
                 const isSingleShift = report.shift_type === 'MORNING_ONLY' || report.shift_type === 'AFTERNOON_ONLY';
-                
+
                 // Labels dinâmicos baseados no tipo de turno
                 const punchLabels = isSingleShift ? {
                   morning: 'Entrada',
@@ -1607,7 +1522,7 @@ export default function ReportsView() {
                   afternoon: 'Entrada Tarde',
                   final: 'Saída Final'
                 };
-                
+
                 return (
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-neutral-700 mb-3">
@@ -1682,9 +1597,9 @@ export default function ReportsView() {
                     const finalLunchExit = editingOccurrenceLunchExit !== undefined ? editingOccurrenceLunchExit : (report.occurrence_lunch_exit || false);
                     const finalAfternoonEntry = editingOccurrenceAfternoonEntry !== undefined ? editingOccurrenceAfternoonEntry : (report.occurrence_afternoon_entry || false);
                     const finalFinalExit = editingOccurrenceFinalExit !== undefined ? editingOccurrenceFinalExit : (report.occurrence_final_exit || false);
-                    
+
                     updateOccurrenceType(
-                      report.id, 
+                      report.id,
                       finalType,
                       finalMorningEntry,
                       finalLunchExit,
@@ -1729,8 +1644,8 @@ export default function ReportsView() {
         };
 
         // Verificar se já existe correção manual
-        const hasManualCorrection = report.is_manual_morning_entry || report.is_manual_lunch_exit || 
-                                    report.is_manual_afternoon_entry || report.is_manual_final_exit;
+        const hasManualCorrection = report.is_manual_morning_entry || report.is_manual_lunch_exit ||
+          report.is_manual_afternoon_entry || report.is_manual_final_exit;
 
         return (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -1751,7 +1666,7 @@ export default function ReportsView() {
                 setOriginalFinalExit('');
               }}
             />
-            
+
             {/* Modal Content */}
             <div
               className="relative bg-white rounded-xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
@@ -1906,7 +1821,7 @@ export default function ReportsView() {
               {/* Informação */}
               <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <p className="text-xs text-blue-700">
-                  💡 <strong>Importante:</strong> As batidas corrigidas manualmente terão prioridade sobre as batidas do arquivo. 
+                  💡 <strong>Importante:</strong> As batidas corrigidas manualmente terão prioridade sobre as batidas do arquivo.
                   Mesmo que um novo arquivo seja carregado, as correções manuais serão preservadas.
                 </p>
               </div>

@@ -302,6 +302,8 @@ export async function GET(request: NextRequest) {
     const totalExtraClt = reports.reduce((sum, r) => sum + (r.extra_clt_minutes || 0), 0);
     const totalSaldoClt = reports.reduce((sum, r) => sum + (r.saldo_clt_minutes || 0), 0);
     const totalIntervalExcess = reports.reduce((sum, r) => sum + (Math.round((r.interval_excess_seconds || 0) / 60)), 0);
+    const totalWorkedMinutes = reports.reduce((sum, r) => sum + (r.worked_minutes || 0), 0);
+    const totalExpectedMinutes = reports.reduce((sum, r) => sum + (r.expected_minutes || 0), 0);
     
     // Detectar se há turno único (verificar primeiro report com shift_type)
     const firstReportWithSchedule = reports.find(r => r.shift_type);
@@ -345,13 +347,17 @@ export async function GET(request: NextRequest) {
           extraClt: report ? (report.extra_clt_minutes || 0) : 0,
           saldoClt: report ? (report.saldo_clt_minutes || 0) : 0,
           intervalExcess: report ? Math.round((report.interval_excess_seconds || 0) / 60) : 0,
+          workedMinutes: report ? (report.worked_minutes || 0) : 0,
+          expectedMinutes: report ? (report.expected_minutes || 0) : 0,
         };
       }),
       totals: {
         atrasoClt: totalAtrasoClt,
         extraClt: totalExtraClt,
         saldoClt: totalSaldoClt,
-        intervalExcess: totalIntervalExcess
+        intervalExcess: totalIntervalExcess,
+        workedMinutes: totalWorkedMinutes,
+        expectedMinutes: totalExpectedMinutes
       }
     };
     
